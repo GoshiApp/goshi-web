@@ -11,6 +11,7 @@ const cols: { h: string; keys: RouteKey[] }[] = [
   { h: ui.footer.community, keys: ["opensource", "contribute", "support", "privacy", "terms"] },
 ];
 const owner = site.legalName || site.name;
+const SOCIAL_LABEL: Record<string, string> = { x: "X", tiktok: "TikTok", telegram: "Telegram", github: "GitHub", instagram: "Instagram", youtube: "YouTube" };
 const socials = Object.entries(site.social).filter(([, v]) => v);
 ---
 <footer class="site-footer">
@@ -19,7 +20,7 @@ const socials = Object.entries(site.social).filter(([, v]) => v);
       <div>
         <p class="brand"><span>Goshi</span></p>
         <p>{ui.footer.tagline}</p>
-        {socials.length > 0 && <ul class="socials">{socials.map(([k, v]) => <li><a href={v} rel="noopener noreferrer me">{k}</a></li>)}</ul>}
+        {socials.length > 0 && <ul class="socials">{socials.map(([k, v]) => <li><a href={v} rel="noopener noreferrer me">{SOCIAL_LABEL[k] ?? k}</a></li>)}</ul>}
       </div>
       {cols.map((c) => (
         <nav aria-label={c.h}>

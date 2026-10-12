@@ -1,5 +1,5 @@
 // The few values that change at launch or when the owner decides them.
-// Everything marked TODO(owner) is a placeholder, kept in the internal legal review.
+// Everything marked TODO(owner) is a placeholder, listed in docs/legal-review.md.
 import type { PlayConfig } from "./lib/play/config";
 
 /**
@@ -19,7 +19,7 @@ function withLocalOverride(base: PlayConfig): PlayConfig {
  * enabled false: the page /es/jugar/ and /en/play/ shows a calm "coming soon" and loads no wallet code.
  * To try it on devnet: fill every TODO(owner) value below, set enabled to true, and add the RPC origin to
  * connect-src for the play page in public/.htaccess and firebase.json (the build checks that it is there).
- * Keep cluster "devnet" until the contract is audited and the lawyer has cleared the legal review.
+ * Going to mainnet: see docs/go-mainnet.md. Keep cluster "devnet" until the contract is audited and the lawyer has cleared docs/legal-review.md section 10.
  * The page is noindex while cluster is not "mainnet-beta", whatever `indexable` says.
  */
 const play: PlayConfig = withLocalOverride({
@@ -54,7 +54,7 @@ export const site = {
   url: "https://goshi.app",
   /**
    * false: every page carries noindex and robots.txt blocks crawlers. Flip to true
-   * only when the legal review (the legal review) is done.
+   * only when the legal review (docs/legal-review.md) is done.
    */
   indexable: false,
   /** TODO(owner): these mailboxes must exist before the site goes live. */
@@ -64,9 +64,16 @@ export const site = {
   /** TODO(owner): the final legal entity name, shown in the footer and in the legal pages. Empty falls back to the brand name. */
   legalName: "Goshi Labs",
   /** TODO(owner): the GitHub organization URL (https). While empty, the community page says the repository is not public yet. */
-  githubUrl: "",
-  /** TODO(owner): social profiles, https URLs. Empty entries are not shown. */
-  social: { x: "", instagram: "", youtube: "", tiktok: "" } as Record<string, string>,
+  githubUrl: "https://github.com/GoshiApp",
+  /** Social profiles, https URLs. Empty entries are not shown. */
+  social: {
+    x: "https://x.com/GoshiApp",
+    tiktok: "https://www.tiktok.com/@goshi.app",
+    telegram: "https://t.me/goshi_official",
+    github: "https://github.com/GoshiApp",
+    instagram: "",
+    youtube: "",
+  } as Record<string, string>,
   /** Date shown on the legal pages. */
   legalUpdated: "2026-10-09",
   year: 2026,
