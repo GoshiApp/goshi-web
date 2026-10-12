@@ -1,0 +1,20 @@
+---
+// Default state of the play page: calm, honest, no scripts, no wallet code.
+import { copy } from "../content";
+import { inline } from "../lib/inline";
+import type { Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const s = copy[lang].play.soon;
+---
+<section class="section" id="play" data-play-state="soon">
+  <div class="wrap">
+    <div class="glass panel prose">
+      <p class="eyebrow">{s.badge}</p>
+      <h2>{s.h2}</h2>
+      <p>{s.text}</p>
+      <ul>{s.list.map((li) => <li>{li}</li>)}</ul>
+      <p class="table-note" set:html={inline(s.note, lang)} />
+    </div>
+  </div>
+</section>

@@ -1,0 +1,39 @@
+---
+import "../styles/global.css";
+import { site } from "../site";
+import { copy } from "../content";
+import { path } from "../lib/i18n";
+import Mark from "../components/Mark.astro";
+const es = copy.es.ui, en = copy.en.ui;
+---
+<!doctype html>
+<html lang="es" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{es.notFound.title} / {en.notFound.title} | {site.name}</title>
+    <meta name="description" content={`${es.notFound.description} ${en.notFound.description}`} />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#070b1f" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png" />
+    <script is:inline src="/js/theme-init.js"></script>
+  </head>
+  <body>
+    <main id="main" class="not-found">
+      <div class="wrap">
+        <Mark size={120} class="not-found-mark" />
+        <p class="num gold" aria-hidden="true">404</p>
+        <h1 style="font-size:2rem">{es.notFound.title} / {en.notFound.title}</h1>
+        <p class="lead" lang="es" style="margin-inline:auto">{es.notFound.text}</p>
+        <p class="lead" lang="en" style="margin-inline:auto">{en.notFound.text}</p>
+        <p class="btn-row" style="justify-content:center">
+          <a class="btn btn-gold" href={path("es", "home")} hreflang="es" lang="es">{es.notFound.home}</a>
+          <a class="btn btn-glass" href={path("en", "home")} hreflang="en" lang="en">{en.notFound.home}</a>
+        </p>
+      </div>
+    </main>
+  </body>
+</html>

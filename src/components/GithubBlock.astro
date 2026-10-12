@@ -1,0 +1,22 @@
+---
+import { site } from "../site";
+import { copy } from "../content";
+import type { Lang } from "../lib/i18n";
+import Icon from "./Icon.astro";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const g = copy[lang].github;
+---
+<section class="section" id="code">
+  <div class="wrap">
+    <div class="glass panel">
+      <div class="section-head" style="margin-bottom:0">
+        <h2><Icon name="code" size={28} /> {g.h2}</h2>
+        <p>{g.text}</p>
+        {site.githubUrl
+          ? <p><a class="btn btn-gold" href={site.githubUrl} rel="noopener noreferrer">{g.button}</a></p>
+          : <p class="notice info" style="padding:14px 18px;margin:0">{g.notYet}</p>}
+      </div>
+    </div>
+  </div>
+</section>

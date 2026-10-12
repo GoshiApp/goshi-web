@@ -1,0 +1,52 @@
+---
+import { site } from "../site";
+import { copy } from "../content";
+import { explorerAddressUrl } from "../lib/play/config";
+import type { Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = copy[lang].ui.launch;
+const { endsAt, ca, wallets } = site.launch;
+const show = endsAt !== "" || ca !== "";
+const cluster = site.play.cluster;
+const walletRows = (Object.keys(wallets) as (keyof typeof wallets)[]).filter((k) => wallets[k] !== "");
+---
+{show && (
+  <section class="launch" aria-label={t.label} data-launch data-ends-at={endsAt} data-ended={t.ended}>
+    <div class="wrap">
+      <p class="launch-label">{t.label}</p>
+      {endsAt !== "" && (
+        <div class="launch-count">
+          <p class="launch-title" data-launch-title>{t.endsIn}</p>
+          <p class="launch-clock" data-launch-clock role="timer" aria-live="off">
+            <span><b data-u="d">--</b> {t.days}</span>
+            <span><b data-u="h">--</b> {t.hours}</span>
+            <span><b data-u="m">--</b> {t.minutes}</span>
+            <span><b data-u="s">--</b> {t.seconds}</span>
+          </p>
+        </div>
+      )}
+      {ca !== "" && (
+        <p class="launch-ca">
+          <span>{t.ca}</span>
+          <code data-launch-ca>{ca}</code>
+          <button type="button" class="launch-copy" data-launch-copy data-copied={t.copied}>{t.copy}</button>
+          <a href={explorerAddressUrl("mainnet-beta", ca)} target="_blank" rel="noopener noreferrer">{t.explorer}</a>
+        </p>
+      )}
+      {walletRows.length > 0 && (
+        <details class="launch-wallets">
+          <summary>{t.wallets}</summary>
+          <ul>
+            {walletRows.map((k) => (
+              <li>
+                <span>{t.wallet[k]}</span>
+                <a href={explorerAddressUrl(cluster === "devnet" ? "mainnet-beta" : cluster, wallets[k])} target="_blank" rel="noopener noreferrer"><code>{wallets[k]}</code></a>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  </section>
+)}

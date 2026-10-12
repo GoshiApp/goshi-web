@@ -1,0 +1,55 @@
+---
+// The site root. The server (see public/.htaccess) redirects by Accept-Language; this static page
+// is the fallback for any other host: a script picks the language, and two plain links remain
+// for people without JavaScript.
+import "../styles/global.css";
+import { site } from "../site";
+import { copy } from "../content";
+import { absolute, path } from "../lib/i18n";
+import Mark from "../components/Mark.astro";
+const es = copy.es.ui;
+const og = absolute("/og/og-es.png");
+---
+<!doctype html>
+<html lang="es" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{es.rootTitle}</title>
+    <meta name="description" content={es.rootDescription} />
+    <link rel="canonical" href={absolute("/")} />
+    <link rel="alternate" hreflang="es" href={absolute(path("es", "home"))} />
+    <link rel="alternate" hreflang="en" href={absolute(path("en", "home"))} />
+    <link rel="alternate" hreflang="x-default" href={absolute("/")} />
+    <meta name="robots" content={site.indexable ? "index, follow" : "noindex, nofollow"} />
+    <meta name="theme-color" content="#070b1f" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:title" content={es.rootTitle} />
+    <meta property="og:description" content={es.rootDescription} />
+    <meta property="og:url" content={absolute("/")} />
+    <meta property="og:image" content={og} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script is:inline src="/js/theme-init.js"></script>
+    <script is:inline src="/js/lang-redirect.js" defer></script>
+  </head>
+  <body>
+    <main id="main" class="not-found">
+      <div class="wrap">
+        <Mark size={120} class="not-found-mark" />
+        <h1>Goshi</h1>
+        <p class="lead" style="margin-inline:auto">Elige tu idioma / Choose your language</p>
+        <p class="btn-row" style="justify-content:center">
+          <a class="btn btn-gold" href={path("es", "home")} hreflang="es" lang="es">Español</a>
+          <a class="btn btn-glass" href={path("en", "home")} hreflang="en" lang="en">English</a>
+        </p>
+      </div>
+    </main>
+  </body>
+</html>

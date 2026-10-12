@@ -1,0 +1,8 @@
+---
+import { copy } from "../content";
+import type { Lang } from "../lib/i18n";
+import type { StatusKey } from "../content/types";
+interface Props { lang: Lang; status: StatusKey }
+const { lang, status } = Astro.props;
+---
+<span class={`status s-${status}`}>{copy[lang].ui.statuses[status]}</span>

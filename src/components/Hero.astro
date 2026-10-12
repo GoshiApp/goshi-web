@@ -1,0 +1,83 @@
+---
+import { copy } from "../content";
+import { site } from "../site";
+import { path, type Lang } from "../lib/i18n";
+import Icon from "./Icon.astro";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const h = copy[lang].home.hero;
+// Deterministic star field (no randomness at build, so builds are reproducible).
+let seed = 11;
+const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+const stars = Array.from({ length: 90 }, (_, i) => ({
+  x: +(rnd() * 100).toFixed(2), y: +(rnd() * 100).toFixed(2),
+  r: +(0.6 + rnd() * 1.2).toFixed(2), o: +(0.35 + rnd() * 0.65).toFixed(2), tw: i % 3 !== 0,
+}));
+const trustIcons = ["flask", "code", "scale"];
+const playHref = path(lang, "play");
+const unit = copy[lang].play.units.sol;
+const quickDefaults = [1, 2.5];
+---
+<div class="wrap hero-wrap">
+  <section class="sky" aria-labelledby="hero-title">
+    <svg class="stars" width="100%" height="100%" aria-hidden="true">
+      {stars.map((s) => <circle class={s.tw ? "tw" : ""} cx={`${s.x}%`} cy={`${s.y}%`} r={s.r} opacity={s.o} />)}
+    </svg>
+    <div class="hero">
+      <div>
+        <p class="eyebrow">{h.eyebrow}</p>
+        <h1 id="hero-title">{h.h1}</h1>
+        <p class="lead">{h.sub}</p>
+        <div class="btn-row">
+          {site.play.enabled
+            ? <a class="btn btn-gold" href={`${path(lang, "play")}?play=1`} data-practice-cta>{h.practice}</a>
+            : <a class="btn btn-gold" href={path(lang, "play")}>{h.primary}</a>}
+          <a class="btn btn-glass" href={path(lang, "how")}>{h.secondary}</a>
+        </div>
+        {site.play.enabled && (
+          <div class="hero-quick" data-quick-hero data-server={site.play.serverUrl} data-about={h.quickAbout} data-unit={unit} data-play={playHref} data-aria={h.quickAria}>
+            <p class="hero-quick-h">{h.quickH}</p>
+            <div class="hero-quick-row">
+              {quickDefaults.map((usd) => (
+                <a class="quick-btn" href={`${playHref}?quick=${usd}`} data-usd={usd} aria-label={h.quickAria.replace("{usd}", `$${usd}`)}>
+                  <strong>${usd}</strong><small data-sol>{h.quickLoading}</small>
+                </a>
+              ))}
+            </div>
+            <p class="table-note">{h.quickNote}</p>
+          </div>
+        )}
+        <ul class="trust">
+          {h.trust.map((x, i) => <li><Icon name={trustIcons[i] ?? "check"} />{x}</li>)}
+        </ul>
+      </div>
+      <div class="stage">
+        <svg class="hero-orbs" viewBox="0 0 400 400" role="img" aria-label={h.illustrationAlt}>
+          <circle cx="200" cy="200" r="170" fill="none" stroke="#f2c94c" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="4 10" />
+          <defs><radialGradient id="hero-goshi" cx="38%" cy="30%" r="75%"><stop offset="0" stop-color="#ffe08a" /><stop offset="0.55" stop-color="#f2c94c" /><stop offset="1" stop-color="#e0a92a" /></radialGradient></defs>
+          <path d="M240 270C300 285 330 235 305 180" fill="none" stroke="#f2c94c" stroke-width="26" stroke-linecap="round" />
+          <circle cx="170" cy="215" r="105" fill="url(#hero-goshi)" />
+          <circle cx="132" cy="200" r="30" fill="#ffffff" />
+          <circle cx="208" cy="200" r="30" fill="#ffffff" />
+          <circle cx="138" cy="208" r="16" fill="#0c1334" />
+          <circle cx="214" cy="208" r="16" fill="#0c1334" />
+          <circle cx="144" cy="201" r="6" fill="#ffffff" />
+          <circle cx="220" cy="201" r="6" fill="#ffffff" />
+          <ellipse cx="92" cy="250" rx="18" ry="11" fill="#ff8fa3" opacity="0.75" />
+          <ellipse cx="248" cy="250" rx="18" ry="11" fill="#ff8fa3" opacity="0.75" />
+          <path d="M148 256Q170 280 192 256" fill="none" stroke="#0c1334" stroke-width="7" stroke-linecap="round" />
+          <circle cx="310" cy="105" r="42" fill="#7be3c3" />
+          <circle cx="325" cy="300" r="24" fill="#8ab4ff" />
+          <circle cx="70" cy="95" r="10" fill="#8ab4ff" />
+          <circle cx="60" cy="320" r="8" fill="#7be3c3" />
+          <circle cx="250" cy="355" r="7" fill="#f2c94c" />
+        </svg>
+        <div class="float f1" role="note"><b>{h.f1.label}</b>{h.f1.text}</div>
+        <div class="float f2" role="note"><b>{h.f2.label}</b>{h.f2.text}</div>
+        <div class="float f3" role="note"><b>{h.f3.label}</b>{h.f3.text}</div>
+      </div>
+    </div>
+  </section>
+  <p class="table-note" style="text-align:center">{h.example}</p>
+</div>
+{site.play.enabled && <script>import "../scripts/home-quick.ts";</script>}

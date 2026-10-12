@@ -1,0 +1,19 @@
+---
+import { copy } from "../content";
+import { path, type Lang, type RouteKey } from "../lib/i18n";
+import type { Page } from "../content/types";
+import { inline } from "../lib/inline";
+import { site } from "../site";
+interface Props { lang: Lang; page: Page; route: RouteKey }
+const { lang, page, route } = Astro.props;
+// The play page opens with the free practice card: its own heading stays short so the card is the first thing.
+const compact = route === "play" && site.play.enabled;
+const ui = copy[lang].ui;
+---
+<div class:list={["wrap", "page-head", compact && "page-head-compact"]}>
+  <p class="crumbs"><a href={path(lang, "home")}>{ui.breadcrumbHome}</a> / {page.eyebrow ?? page.title}</p>
+  {page.eyebrow && <p class="eyebrow">{page.eyebrow}</p>}
+  <h1>{page.h1}</h1>
+  <p class="lead" set:html={inline(page.lead, lang)} />
+  {page.meta && <p class="legal-meta">{page.meta}</p>}
+</div>

@@ -1,0 +1,34 @@
+---
+// The wallet chip of the site header. Rendered only while the on-chain games are enabled, so the script (and the wallet
+// session it loads) never reaches a page of a site where the games are off.
+import { site } from "../site";
+import { copy } from "../content";
+import { path, type Lang } from "../lib/i18n";
+import Icon from "./Icon.astro";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const w = copy[lang].ui.walletChip;
+const cluster = site.play.cluster;
+const i18n = JSON.stringify({
+  connect: w.connect, connected: w.connected, announceConnected: w.announceConnected, announceDisconnected: w.announceDisconnected,
+  network: w.network[cluster], showNetwork: cluster !== "mainnet-beta",
+});
+---
+<div class="wallet-chip" data-wallet-chip data-play-href={path(lang, "play", "play-wallet")} data-play-path={path(lang, "play")}>
+  <script type="application/json" id="wallet-chip-i18n" set:html={i18n}></script>
+  <button type="button" class="pill wallet-btn" id="wallet-chip-btn" aria-label={w.connectAria} aria-expanded="false" aria-controls="wallet-chip-pop">
+    <Icon name="coin" size={18} />
+    <span class="chip-text">{w.connect}</span>
+    <span class="chip-badge" id="wallet-chip-badge" hidden></span>
+  </button>
+  <div class="wallet-pop" id="wallet-chip-pop" hidden>
+    <p class="wallet-pop-title">{w.menu}</p>
+    <p class="wallet-pop-name" id="wallet-chip-name"></p>
+    <code class="wallet-pop-addr" id="wallet-chip-addr"></code>
+    <button type="button" class="btn btn-glass btn-sm" id="wallet-chip-disconnect" aria-label={w.disconnectAria}>{w.disconnect}</button>
+  </div>
+  <span class="sr" role="status" aria-live="polite" id="wallet-chip-live"></span>
+</div>
+<script>
+  import "../scripts/wallet-chip.ts";
+</script>

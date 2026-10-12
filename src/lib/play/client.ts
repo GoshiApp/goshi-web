@@ -1,0 +1,230 @@
+// The client for the native goshi-escrow program (SOL entry fees, saboteur seats gated by a $GOSHI balance).
+// Everything that needs @solana/web3.js lives here, and this file is only ever loaded (dynamic import)
+// by the play page when the feature is enabled.
+//
+// What it does: list and read rooms, take a paid seat (join_room) or a saboteur seat (join_free), read balances.
+// What it does NOT do: create rooms, finalize, cancel or run the swap. Those need the platform authority key and run on a server.
+
+import { Connection, PublicKey, Transaction } from "@solana/web3.js";
+import { TokenAccountNotFoundError, getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { GoshiEscrow, ROOM_LEN, decodeConfig, decodeRoom, type RoomAccount } from "./escrow-native.ts";
+import { PlayError, classifyError, txErrorText } from "./errors.ts";
+import { canJoinFree, canJoinPaid, sortRooms, type RoomView } from "./rooms.ts";
+import type { Signer } from "./wallet.ts";
+
+export interface ClientSettings {
+  rpcUrl: string;
+  programId: string;
+  goshiMint: string;
+  infraWallet: string;
+  liquidityWallet: string;
+}
+
+export interface SendCallbacks {
+  /** Called as soon as the network has accepted the transaction, before it is confirmed. */
+  onSubmitted?: (signature: string) => void;
+}
+
+/** What the contract has stored, as far as the page needs it. */
+export interface ChainConfig {
+  /** $GOSHI base units (6 decimals) a wallet must hold to take a saboteur seat. */
+  minHolder: bigint;
+  dexEnabled: boolean;
+  /** Saboteurs a room needs, with its 10 paid players, before it starts. */
+  requiredSaboteurs: number;
+}
+
+/** Lamports kept aside for the network fee when checking that a balance can pay an entry. */
+export const NETWORK_FEE_MARGIN = 10_000n;
+
+const toView = (r: RoomAccount): RoomView => ({
+  roomId: r.roomId,
+  entryFee: r.entryFee,
+  state: r.state,
+  mode: r.mode,
+  paid: r.paid.map((p) => p.toBase58()),
+  free: r.free.map((p) => p.toBase58()),
+  passes: r.passes,
+});
+
+export class PlayClient {
+  readonly connection: Connection;
+  readonly programId: PublicKey;
+  readonly mint: PublicKey;
+  private readonly escrow: GoshiEscrow;
+  private readonly infraWallet: PublicKey;
+  private readonly liquidityWallet: PublicKey;
+  private verified: Promise<ChainConfig> | null = null;
+
+  constructor(settings: ClientSettings) {
+    this.connection = new Connection(settings.rpcUrl, "confirmed");
+    this.programId = new PublicKey(settings.programId);
+    this.mint = new PublicKey(settings.goshiMint);
+    this.infraWallet = new PublicKey(settings.infraWallet);
+    this.liquidityWallet = new PublicKey(settings.liquidityWallet);
+    // The program address comes from the site settings (site.play.programId), so a redeploy needs no code change.
+    this.escrow = new GoshiEscrow(this.programId);
+  }
+
+  // ------------------------------------------------------------------ reads
+
+  /** Stops before any money moves if this page's settings do not match what the contract has stored. Cached. */
+  verifyConfig(): Promise<ChainConfig> {
+    this.verified ??= this.doVerify().catch((e) => {
+      this.verified = null; // try again next time (a network blip must not lock the page)
+      throw e;
+    });
+    return this.verified;
+  }
+
+  private async doVerify(): Promise<ChainConfig> {
+    const info = await this.connection.getAccountInfo(this.programId);
+    if (!info?.executable) throw new PlayError("wrongConfig", "The program is not deployed at this address on this network");
+    const acc = await this.connection.getAccountInfo(this.escrow.pda.config, "confirmed");
+    const cfg = acc ? decodeConfig(acc.data) : null;
+    if (!cfg) throw new PlayError("wrongConfig", "The program has not been initialized");
+    const same = cfg.mint.equals(this.mint) && cfg.infraWallet.equals(this.infraWallet) && cfg.liquidityWallet.equals(this.liquidityWallet);
+    if (!same) throw new PlayError("wrongConfig", "The site settings do not match the on-chain configuration");
+    return { minHolder: cfg.minHolder, dexEnabled: false, requiredSaboteurs: cfg.requiredSaboteurs };
+  }
+
+  /** Every MatchRoom account of the program: waiting rooms first, then by number. */
+  async listRooms(): Promise<RoomView[]> {
+    const all = await this.connection.getProgramAccounts(this.programId, { commitment: "confirmed", filters: [{ dataSize: ROOM_LEN }] });
+    const rooms: RoomView[] = [];
+    for (const { account } of all) {
+      const r = decodeRoom(account.data);
+      if (r) rooms.push(toView(r));
+    }
+    return sortRooms(rooms);
+  }
+
+  async fetchRoom(roomId: bigint): Promise<RoomView | null> {
+    const info = await this.connection.getAccountInfo(this.escrow.pda.room(roomId), "confirmed");
+    const r = info ? decodeRoom(info.data) : null;
+    return r ? toView(r) : null;
+  }
+
+  /** The wallet's $GOSHI balance in base units (its associated token account). 0n when it has none. */
+  async getGoshiBalance(owner: PublicKey): Promise<bigint> {
+    try {
+      return (await getAccount(this.connection, getAssociatedTokenAddressSync(this.mint, owner), "confirmed")).amount;
+    } catch (e) {
+      if (e instanceof TokenAccountNotFoundError) return 0n;
+      throw e;
+    }
+  }
+
+  /** SOL balance in lamports. */
+  async getSolBalance(owner: PublicKey): Promise<bigint> {
+    return BigInt(await this.connection.getBalance(owner, "confirmed"));
+  }
+
+  // ------------------------------------------------------------------ writes
+
+  /** Takes a paid seat: the entry fee (SOL) moves from the wallet into the room account. */
+  async joinRoom(roomId: bigint, wallet: Signer, cb: SendCallbacks = {}): Promise<string> {
+    await this.verifyConfig();
+    const room = await this.fetchRoom(roomId);
+    if (!room) throw new PlayError("roomGone");
+    const check = canJoinPaid(room, wallet.publicKey.toBase58());
+    if (!check.ok) throw new PlayError(check.reason);
+    // The fee plus a margin for the network fee.
+    const have = await this.getSolBalance(wallet.publicKey);
+    const need = room.entryFee + NETWORK_FEE_MARGIN;
+    if (have < need) {
+      throw new PlayError("insufficientSol", "not enough SOL", undefined, {
+        need: need.toString(), fee: room.entryFee.toString(), network: NETWORK_FEE_MARGIN.toString(), have: have.toString(),
+      });
+    }
+
+    const tx = new Transaction().add(this.escrow.joinRoom(wallet.publicKey, roomId));
+    return this.send(tx, wallet, cb);
+  }
+
+  /** Takes a saboteur seat: free, the wallet must hold at least the minimum $GOSHI (nothing is taken from it). */
+  async joinFree(roomId: bigint, wallet: Signer, cb: SendCallbacks = {}): Promise<string> {
+    const chain = await this.verifyConfig();
+    const room = await this.fetchRoom(roomId);
+    if (!room) throw new PlayError("roomGone");
+    const playerToken = getAssociatedTokenAddressSync(this.mint, wallet.publicKey);
+    let balance: bigint;
+    try {
+      balance = (await getAccount(this.connection, playerToken, "confirmed")).amount;
+    } catch (e) {
+      if (e instanceof TokenAccountNotFoundError) throw new PlayError("noTokenAccount");
+      throw e;
+    }
+    const check = canJoinFree(room, wallet.publicKey.toBase58(), balance, chain.minHolder);
+    if (!check.ok) {
+      throw new PlayError(check.reason, check.reason, undefined, check.reason === "notEnoughGoshi" ? { min: chain.minHolder.toString(), have: balance.toString() } : undefined);
+    }
+
+    const tx = new Transaction().add(this.escrow.joinFree(wallet.publicKey, roomId, playerToken));
+    return this.send(tx, wallet, cb);
+  }
+
+  private async preflight(tx: Transaction): Promise<void> {
+    let sim;
+    try {
+      sim = await this.connection.simulateTransaction(tx);
+    } catch (e) {
+      const kind = classifyError(e);
+      throw new PlayError(kind === "unknown" ? "network" : kind, e instanceof Error ? e.message : String(e));
+    }
+    const err = sim.value.err;
+    if (!err) return;
+    const text = `${txErrorText(err)}\n${(sim.value.logs ?? []).join("\n")}`;
+    console.warn("[goshi] pre-flight simulation failed", err, sim.value.logs);
+    throw new PlayError(classifyError({ message: text, logs: sim.value.logs ?? [] }), text);
+  }
+
+  /**
+   * Polls the signature status over plain HTTPS. web3.js's own confirmTransaction opens a WebSocket,
+   * which would need a second origin in the Content-Security-Policy and fails on many public RPCs.
+   */
+  private async waitForConfirmation(signature: string, lastValidBlockHeight: number): Promise<void> {
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      const { value } = await this.connection.getSignatureStatuses([signature]);
+      const st = value[0];
+      if (st?.err) throw new PlayError(classifyError({ message: txErrorText(st.err) }), txErrorText(st.err), signature);
+      if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return;
+      if ((await this.connection.getBlockHeight("confirmed")) > lastValidBlockHeight) {
+        throw new PlayError("expired", "The transaction was not confirmed before its blockhash expired", signature);
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    throw new PlayError("network", "Timed out waiting for confirmation", signature);
+  }
+
+  /** Sign with the wallet, send through our RPC, wait for "confirmed". */
+  private async send(tx: Transaction, wallet: Signer, cb: SendCallbacks): Promise<string> {
+    tx.feePayer = wallet.publicKey;
+    // Pre-flight: simulate on OUR network before the wallet is asked to sign. If this fails the problem is the program
+    // or the room, and we can say so in plain words. If it passes and the wallet then fails to simulate, the wallet is
+    // on another network (classifySignError).
+    await this.preflight(tx);
+    const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = blockhash;
+
+    let signature: string;
+    try {
+      const signed = await wallet.signTransaction(tx);
+      signature = await this.connection.sendRawTransaction(signed.serialize(), { preflightCommitment: "confirmed" });
+    } catch (e) {
+      throw e instanceof PlayError ? e : new PlayError(classifyError(e), e instanceof Error ? e.message : String(e));
+    }
+    cb.onSubmitted?.(signature);
+
+    try {
+      await this.waitForConfirmation(signature, lastValidBlockHeight);
+    } catch (e) {
+      if (e instanceof PlayError) throw e;
+      // We could not confirm it. It may still land, so the page keeps the link and says so.
+      const kind = classifyError(e);
+      throw new PlayError(kind === "unknown" ? "network" : kind, e instanceof Error ? e.message : String(e), signature);
+    }
+    return signature;
+  }
+}

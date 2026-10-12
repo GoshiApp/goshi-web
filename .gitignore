@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.astro/
+.DS_Store
+# Local secrets and deploy settings never go in the repo.
+.env
+.env.*
+*.local
+.deploy.env
+*.pem
+*.key
+# Local devnet test config (npm run play:local-config)
+src/lib/play/local-config.generated.json

@@ -1,0 +1,93 @@
+---
+import "../styles/global.css";
+import fontUrl from "@fontsource-variable/nunito/files/nunito-latin-wght-normal.woff2?url";
+import { site } from "../site";
+import { copy } from "../content";
+import { absolute, path, LANGS, type Lang, type RouteKey } from "../lib/i18n";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import LaunchBanner from "../components/LaunchBanner.astro";
+import LiveTicker from "../components/LiveTicker.astro";
+
+interface Props {
+  lang: Lang;
+  route?: RouteKey;
+  title: string;
+  description: string;
+  /** Overrides: used by the 404 page, which has no language twin. */
+  canonicalPath?: string;
+  noindex?: boolean;
+  /** Skip hreflang alternates (404 only). */
+  noAlternates?: boolean;
+  switchHref?: string;
+}
+const { lang, route, title, description, canonicalPath, noindex = false, noAlternates = false, switchHref } = Astro.props;
+const ui = copy[lang].ui;
+const self = canonicalPath ?? path(lang, route ?? "home");
+const canonical = absolute(self);
+const robots = !site.indexable || noindex ? "noindex, nofollow" : "index, follow";
+const fullTitle = route === "home" || !route ? title : `${title} | ${site.name}`;
+const og = absolute(`/og/og-${lang}.png`);
+const ogLocale = lang === "es" ? "es_419" : "en_US";
+const ogAlt = ui.ogAlt;
+const ld = route === "home" ? JSON.stringify({
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "Organization", name: site.name, url: site.url, logo: absolute("/img/logo-192.png") },
+    { "@type": "WebSite", name: site.name, url: site.url, inLanguage: ["es", "en"] },
+  ],
+}) : null;
+---
+<!doctype html>
+<html lang={ui.htmlLang} data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {!noAlternates && LANGS.map((l) => <link rel="alternate" hreflang={l} href={absolute(path(l, route ?? "home"))} />)}
+    {!noAlternates && <link rel="alternate" hreflang="x-default" href={absolute("/")} />}
+    <meta name="robots" content={robots} />
+    <meta name="theme-color" content="#070b1f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fbf8f0" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preload" href={fontUrl} as="font" type="font/woff2" crossorigin />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content={ogLocale} />
+    <meta property="og:image" content={og} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={ogAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={og} />
+    <script is:inline src="/js/theme-init.js"></script>
+    {ld && <script type="application/ld+json" set:html={ld} />}
+  </head>
+  <body>
+    <a class="skip" href="#main">{ui.skip}</a>
+    <Header lang={lang} route={route} switchHref={switchHref} />
+    <LiveTicker lang={lang} />
+    <LaunchBanner lang={lang} />
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+    <Footer lang={lang} />
+    <script>
+      import "../scripts/site.ts";
+      import "../scripts/launch.ts";
+      import "../scripts/live-stats.ts";
+    </script>
+  </body>
+</html>

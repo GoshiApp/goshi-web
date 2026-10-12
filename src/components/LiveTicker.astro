@@ -1,0 +1,29 @@
+---
+// Live numbers of the platform: prices of the gems and the people and matches on the game server. It opens ONE read-only
+// socket to the game server (no wallet, nothing stored) and only while the page is visible.
+import { site } from "../site";
+import { copy } from "../content";
+import { isMainnet } from "../lib/play/config";
+import type { Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = copy[lang].ui.ticker;
+const on = site.play.enabled && site.play.serverUrl !== "";
+const unit = isMainnet(site.play.cluster) ? t.unitReal : t.unitTest;
+const SYMS = ["SOL", "ETH", "BTC", "DOGE", "AVAX", "BNB"];
+---
+{on && (
+  <aside class="ticker" aria-label={t.label} data-ticker data-server={site.play.serverUrl} data-offline={t.offline}>
+    <div class="wrap ticker-in">
+      <ul class="ticker-prices" aria-label={t.prices}>
+        {SYMS.map((s) => <li><b>{s}</b> <span data-price={s}>-</span></li>)}
+      </ul>
+      <ul class="ticker-stats">
+        <li><span>{t.online}</span> <b data-stat="online">-</b></li>
+        <li><span>{t.playing}</span> <b data-stat="playing">-</b></li>
+        <li><span>{t.matches}</span> <b data-stat="matches">-</b></li>
+        <li><span>{t.volume}</span> <b data-stat="volume">-</b> <small>{unit}</small></li>
+      </ul>
+    </div>
+  </aside>
+)}

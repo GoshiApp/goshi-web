@@ -1,0 +1,310 @@
+---
+// The working play page. Rendered only when site.play.enabled is true and the settings are complete.
+// Static words and structure are here; src/scripts/play.ts fills the live parts (rooms, pot, balances)
+// and is the only code that loads the wallet and Anchor client (lazily, from inside that script).
+import { site } from "../site";
+import { copy } from "../content";
+import { isMainnet } from "../lib/play/config";
+import { WALLET_IDS, WALLET_INSTALL_URLS, WALLET_NAMES } from "../lib/play/wallet";
+import { inline } from "../lib/inline";
+import { path, type Lang } from "../lib/i18n";
+import Icon from "./Icon.astro";
+import EligibilityGate from "./EligibilityGate.astro";
+import RealtimeArena from "./RealtimeArena.astro";
+import { GOSHI_HUES } from "../lib/play/goshi-face";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const c = copy[lang].play;
+const p = site.play;
+const mainnet = isMainnet(p.cluster);
+const locale = lang === "es" ? "es" : "en-US";
+const unitSol = c.units.sol;
+const unitGoshi = mainnet ? c.units.goshiLive : c.units.goshiTest;
+const fill = (tpl: string, vars: Record<string, string>) => tpl.replace(/\{(\w+)\}/g, (_m, k: string) => vars[k] ?? "");
+const bannerText = mainnet ? c.banner.mainnet : p.cluster === "testnet" ? c.banner.testnet : c.banner.devnet;
+const explorerCluster = p.explorerCluster ?? p.cluster;
+const networkName = p.cluster === "testnet" ? "Testnet" : "Devnet";
+const potRows = ["first", "second", "third", "burn", "infra", "liquidity", "jackpot"] as const;
+
+// Everything the script needs, as data. bigint values travel as text.
+const data = {
+  lang,
+  locale,
+  mainnet,
+  cluster: p.cluster,
+  explorerCluster,
+  symbol: p.token.symbol,
+  unitSol,
+  unitGoshi,
+  settings: {
+    rpcUrl: p.rpcUrl, programId: p.programId, goshiMint: p.goshiMint, infraWallet: p.infraWallet, liquidityWallet: p.liquidityWallet,
+    serverUrl: p.serverUrl,
+  },
+  walletNames: WALLET_NAMES,
+  homeHref: path(lang, "home"),
+  t: {
+    quick: c.quick,
+    wallet: c.wallet, rooms: c.rooms, practice: c.practice, pot: { room: c.pot.room, unavailable: c.pot.unavailable },
+    entry: c.entry, vsOffer: c.vsOffer, tx: c.tx, errors: c.errors, exact: c.exact, live: c.live, gate: c.gate,
+    potLabels: {
+      first: c.pot.rows.first.label, second: c.pot.rows.second.label, third: c.pot.rows.third.label, burn: c.pot.rows.burn.label,
+      infra: c.pot.rows.infra.label, liquidity: c.pot.rows.liquidity.label, jackpot: c.pot.rows.jackpot.label, pot: c.pot.totals.pot.label,
+      rake: c.pot.totals.rake.label, prizePool: c.pot.totals.prizePool.label,
+    },
+  },
+};
+const json = JSON.stringify(data).replace(/</g, "\\u003c");
+---
+<!-- Plain file in public/css, linked only here: Astro would otherwise attach a bundled stylesheet to every page. -->
+<link rel="stylesheet" href="/css/play.css" />
+<section class="section play" id="play" data-play-state="live" data-cluster={p.cluster}>
+  <div class="wrap play-stack">
+    <script type="application/json" id="play-data" set:html={json}></script>
+
+    <section class="glass play-now" id="play-now" aria-labelledby="play-now-h">
+      <p class="eyebrow">{c.practice.eyebrow}</p>
+      <h2 id="play-now-h">{c.practice.h2}</h2>
+      <p>{c.practice.text}</p>
+      <fieldset class="goshi-colors">
+        <legend>{c.practice.colorLabel}</legend>
+        {GOSHI_HUES.map((h, i) => (
+          <label class="goshi-swatch" title={c.practice.colorNames[i]}>
+            <input type="radio" name="goshi-color" value={String(i)} data-goshi-color aria-label={c.practice.colorNames[i]} />
+            <span style={`--h:${h}`}></span>
+          </label>
+        ))}
+      </fieldset>
+      <div class="play-now-row">
+        <label class="play-now-name" for="play-now-name">
+          <span>{c.practice.nameLabel}</span>
+          <input id="play-now-name" type="text" maxlength="14" autocomplete="nickname" autocapitalize="words" spellcheck="false" placeholder={c.practice.namePlaceholder} />
+        </label>
+        <button type="button" class="btn btn-gold btn-lg" id="play-now-btn">{c.practice.button}</button>
+        <button type="button" class="btn btn-glass" id="play-now-leave" hidden>{c.practice.leave}</button>
+      </div>
+      <p class="demo-note">{c.practice.note}</p>
+      <p class="play-msg" id="play-now-msg" role="status" aria-live="polite"></p>
+
+      <div class="quick" id="play-quick" aria-labelledby="play-quick-h">
+        <h3 id="play-quick-h">{c.quick.h2}</h3>
+        <p class="demo-note">{c.quick.intro}</p>
+        <div class="quick-row" role="group" aria-labelledby="play-quick-h">
+          {[1, 2.5].map((usd, i) => (
+            <button type="button" class="quick-btn" data-quick-opt={String(i)} data-usd={String(usd)} disabled>
+              <strong>${usd}</strong><small data-sol>{c.quick.loading}</small>
+            </button>
+          ))}
+        </div>
+        <details class="quick-more">
+          <summary>{c.quick.more}</summary>
+          <div class="quick-row">
+            {[5, 7.5, 10].map((usd, k) => (
+              <button type="button" class="quick-btn" data-quick-opt={String(k + 2)} data-usd={String(usd)} disabled>
+                <strong>${usd}</strong><small data-sol>{c.quick.loading}</small>
+              </button>
+            ))}
+          </div>
+        </details>
+        <p class="demo-note" id="play-quick-note"></p>
+        <div class="spend">
+          <span id="play-spent" role="status" aria-live="polite"></span>
+          <label class="spend-limit"><span>{c.quick.limitLabel}</span>
+            <select id="play-limit">
+              <option value="">{c.quick.limitNone}</option>
+              <option value="50000000">0.05 {unitSol}</option>
+              <option value="100000000">0.1 {unitSol}</option>
+              <option value="250000000">0.25 {unitSol}</option>
+            </select>
+          </label>
+        </div>
+        <p class="play-msg" id="play-quick-msg" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <div class:list={["play-banner", mainnet && "play-banner-real"]} role="note" data-play-banner={mainnet ? "mainnet" : "test"} data-play-unaudited={p.audited ? undefined : ""}>
+      <Icon name="warn" size={22} />
+      <p><strong>{c.banner.title}.</strong> {bannerText}</p>
+    </div>
+
+
+    <noscript><p class="noscript-note">{c.noscript}</p></noscript>
+
+    <div class="play-main" id="play-main">
+      <RealtimeArena lang={lang} />
+
+      <section class="glass play-panel" id="play-rooms" aria-labelledby="play-rooms-h">
+        <h2 id="play-rooms-h">{c.rooms.h2}</h2>
+        <p>{c.rooms.intro}</p>
+        <div class="rooms-bar">
+          <button type="button" class="btn btn-glass btn-sm" id="play-refresh">{c.rooms.refresh}</button>
+          <span class="demo-note" id="play-updated"></span>
+        </div>
+        <p id="play-rooms-msg" class="play-msg" role="status" aria-live="polite">{c.rooms.loading}</p>
+        <ul class="room-list" id="play-room-list" aria-label={c.rooms.caption}></ul>
+      </section>
+
+      <section class="glass play-panel" id="play-tx-panel" aria-labelledby="play-tx-h">
+        <h2 id="play-tx-h">{c.tx.h2}</h2>
+        <div id="play-tx" role="status" aria-live="polite" aria-atomic="true">
+          <p id="play-tx-text"><span class="spinner" id="play-tx-spin" aria-hidden="true" hidden></span><span id="play-tx-msg">{c.tx.idle}</span></p>
+        </div>
+        <p id="play-tx-error" class="play-error" role="alert" hidden></p>
+        <p><button type="button" class="btn btn-glass btn-sm" id="play-tx-retry" hidden>{c.tx.retry}</button></p>
+        <p><a id="play-tx-link" href="https://explorer.solana.com" rel="noopener noreferrer" hidden></a></p>
+      </section>
+
+      <section class="glass play-panel" id="play-create" aria-labelledby="play-create-h">
+        <h2 id="play-create-h">{c.live.create.h2}</h2>
+        <p>{c.live.create.intro}</p>
+        <p class="play-msg" id="play-server-status" role="status" aria-live="polite">{c.live.server.needWallet}</p>
+        <p><button type="button" class="btn btn-gold btn-sm" id="play-signin" hidden>{c.live.server.signinButton}</button></p>
+        <div class="create-form">
+          <fieldset class="create-fees">
+            <legend>{c.live.create.fee}</legend>
+            <span id="play-fee-options"></span>
+          </fieldset>
+          <button type="button" class="btn btn-gold" id="play-create-btn">{c.live.create.button}</button>
+        </div>
+        <p class="play-msg" id="play-create-msg" role="status" aria-live="polite"></p>
+        <p><a id="play-create-link" href="https://explorer.solana.com" rel="noopener noreferrer" hidden></a></p>
+        {!mainnet && (
+          <div id="play-faucet-box" hidden>
+            <h3>{c.live.faucet.h2}</h3>
+            <p>{c.live.faucet.text}</p>
+            <button type="button" class="btn btn-glass btn-sm" id="play-faucet">{c.live.faucet.button}</button>
+            <p class="play-msg" id="play-faucet-msg" role="status" aria-live="polite"></p>
+          </div>
+        )}
+        <p id="play-live-error" class="play-error" role="alert" hidden></p>
+      </section>
+
+      <aside class="notice info" aria-labelledby="play-notice-t">
+        <h3 id="play-notice-t"><Icon name="info" />{c.notice.title}</h3>
+        <ul>
+          {c.notice.list.map((li) => <li set:html={inline(li, lang)} />)}
+        </ul>
+      </aside>
+
+      <EligibilityGate lang={lang} />
+
+      <section class="glass play-panel" id="play-wallet" aria-labelledby="play-wallet-h">
+        <h2 id="play-wallet-h">{c.wallet.h2}</h2>
+        <p>{c.wallet.intro}</p>
+        <div class="wallet-mobile" id="play-wallet-mobile" hidden>
+          <h3>{c.wallet.mobileH2}</h3>
+          <p>{c.wallet.mobileText}</p>
+          <div class="btn-row">
+            {WALLET_IDS.map((w) => (
+              <a class="btn btn-gold" data-open-wallet={w} href={WALLET_INSTALL_URLS[w]} rel="noopener noreferrer">{fill(c.wallet.openIn, { wallet: WALLET_NAMES[w] })}</a>
+            ))}
+          </div>
+          <p class="demo-note">{c.wallet.mobileNoWallet}</p>
+          <ul class="mobile-installs">
+            {WALLET_IDS.map((w) => <li><a href={WALLET_INSTALL_URLS[w]} rel="noopener noreferrer">{fill(c.wallet.install, { wallet: WALLET_NAMES[w] })}</a></li>)}
+          </ul>
+        </div>
+        <div class="wallet-opts" id="play-wallet-choose">
+          {WALLET_IDS.map((w) => (
+            <div class="wallet-opt">
+              <button type="button" class="btn btn-gold" data-connect={w}>{fill(c.wallet.connectWith, { wallet: WALLET_NAMES[w] })}</button>
+              <p class="demo-note" data-wallet-state={w}></p>
+              <a class="demo-note" data-install={w} href={WALLET_INSTALL_URLS[w]} rel="noopener noreferrer" hidden>{fill(c.wallet.install, { wallet: WALLET_NAMES[w] })}</a>
+            </div>
+          ))}
+        </div>
+        <div id="play-wallet-connected" hidden>
+          <p><strong id="play-wallet-who"></strong></p>
+          <p class="mono-line"><code id="play-wallet-address"></code></p>
+          <dl class="play-dl" aria-label={c.wallet.balances}>
+            <div><dt>{fill(c.wallet.sol, { unit: unitSol })}</dt><dd id="play-bal-sol">...</dd></div>
+            <div><dt>{fill(c.wallet.goshi, { unit: unitGoshi })}</dt><dd id="play-bal-goshi">...</dd></div>
+          </dl>
+          <button type="button" class="btn btn-glass btn-sm" id="play-disconnect">{c.wallet.disconnect}</button>
+        </div>
+        <p id="play-wallet-msg" class="play-msg" role="status" aria-live="polite"></p>
+        <p><a id="play-wallet-help" href="https://docs.phantom.app/developer-powertools/domain-and-transaction-warnings" rel="noopener noreferrer" hidden>{c.wallet.blockedLink}</a></p>
+        {c.wallet.netHelp && <p class="demo-note net-help" id="play-net-help">{fill(c.wallet.netHelp, { network: networkName })}</p>}
+      </section>
+
+      <section class="glass play-panel" id="play-pot" aria-labelledby="play-pot-h">
+        <h2 id="play-pot-h">{c.pot.h2}</h2>
+        <p>{c.pot.intro}</p>
+        <p class="play-msg" id="play-pot-none">{c.pot.noRoom}</p>
+        <div id="play-pot-body" hidden>
+          <h3 id="play-pot-room"></h3>
+          <div class="pot-figures">
+            <div class="glass"><span>{c.pot.live}</span><b id="play-pot-live">...</b></div>
+            <div class="glass"><span>{c.pot.whenFull}</span><b id="play-pot-full">...</b></div>
+          </div>
+          <p class="demo-note" id="play-pot-basis">{c.pot.basis}</p>
+          <p class="pot-explain"><strong>{c.pot.rakeH}.</strong> {c.pot.rakeIntro}</p>
+          <div class="table-wrap" tabindex="0" role="region" aria-label={c.pot.h2}>
+            <table>
+              <thead><tr><th scope="col">{c.pot.head[0]}</th><th scope="col">{c.pot.head[1]}</th><th scope="col" class="num">{c.pot.head[2]}</th></tr></thead>
+              <tbody>
+                <tr class="group"><th scope="rowgroup" colspan="3">{c.pot.prizeH}</th></tr>
+                {(["first", "second", "third"] as const).map((k) => (
+                  <tr><th scope="row">{c.pot.rows[k].label}</th><td>{c.pot.rows[k].share}</td><td class="num" data-amt={k}>...</td></tr>
+                ))}
+                <tr><th scope="row">{c.pot.rows.saboteurs.label}</th><td>{c.pot.rows.saboteurs.share}</td><td class="num" data-amt="saboteurs">...</td></tr>
+                <tr class="group"><th scope="rowgroup" colspan="3">{c.pot.rakeH}</th></tr>
+                {(["burn", "infra", "liquidity", "jackpot"] as const).map((k) => (
+                  <tr><th scope="row">{c.pot.rows[k].label}<small>{c.pot.rows[k].text}</small></th><td>{c.pot.rows[k].share}</td><td class="num" data-amt={k}>...</td></tr>
+                ))}
+                <tr class="total"><th scope="row">{c.pot.totals.prizePool.label}</th><td>{c.pot.totals.prizePool.share}</td><td class="num" data-amt="prizePool">...</td></tr>
+                <tr class="total"><th scope="row">{c.pot.totals.rake.label}</th><td>{c.pot.totals.rake.share}</td><td class="num" data-amt="rake">...</td></tr>
+                <tr class="total"><th scope="row">{c.pot.totals.pot.label}</th><td>{c.pot.totals.pot.share}</td><td class="num" data-amt="pot">...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="table-note">{c.pot.saboteurNote}</p>
+          <p class="table-note">{c.pot.passNote}</p>
+          <p class="table-note">{c.pot.vsNote}</p>
+          <p class="table-note">{c.pot.rounding}</p>
+        </div>
+      </section>
+    </div>
+
+    <dialog class="play-dialog" id="play-entry" aria-labelledby="play-entry-title">
+      <h2 id="play-entry-title"></h2>
+      <p id="play-entry-text"></p>
+      <dl class="play-dl play-dl-lines" id="play-entry-lines"></dl>
+      <section class="entry-sec entry-saboteurs">
+        <h3>{c.entry.saboteurTitle}</h3>
+        <p>{c.entry.saboteurNotice}</p>
+      </section>
+      <section class="entry-sec">
+        <h3>{c.entry.superPotTitle}</h3>
+        <p>{c.entry.superPotText}</p>
+        <p>{c.entry.superPotTrust}</p>
+      </section>
+      <section class="entry-sec"><h3>{c.entry.rakeTitle}</h3><p>{c.entry.rakeText}</p></section>
+      <section class="entry-sec"><h3>{c.entry.vsTitle}</h3><p>{c.entry.vsText}</p></section>
+      <section class="entry-sec"><h3>{c.entry.finalTitle}</h3><p>{c.entry.finalText}</p></section>
+      <p class="demo-note">{c.entry.testReminder}</p>
+      <label class="gate-check entry-accept">
+        <input type="checkbox" id="play-entry-accept" aria-describedby="play-entry-msg" />
+        <span>{c.entry.accept}</span>
+      </label>
+      <p class="demo-note" id="play-entry-msg" role="status" aria-live="polite"></p>
+      <div class="btn-row">
+        <button type="button" class="btn btn-gold" id="play-entry-ok" aria-disabled="true">{c.entry.confirm}</button>
+        <button type="button" class="btn btn-glass" id="play-entry-cancel" autofocus>{c.entry.cancel}</button>
+      </div>
+    </dialog>
+
+    <dialog class="play-dialog" id="play-vs" aria-labelledby="play-vs-title" aria-describedby="play-vs-text">
+      <h2 id="play-vs-title">{c.vsOffer.title}</h2>
+      <p id="play-vs-text"></p>
+      <p><strong id="play-vs-count" role="timer"></strong></p>
+      <div class="btn-row">
+        <button type="button" class="btn btn-gold" id="play-vs-accept">{c.vsOffer.accept}</button>
+        <button type="button" class="btn btn-glass" id="play-vs-decline" autofocus>{c.vsOffer.decline}</button>
+      </div>
+    </dialog>
+  </div>
+</section>
+<script>
+  import "../scripts/play.ts";
+  import "../scripts/practice.ts";
+</script>

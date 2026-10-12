@@ -1,0 +1,26 @@
+---
+// A plain illustration of the arena rules (not a recording). Honest: it matches the rules of the game server.
+import { copy } from "../content";
+import type { Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const o = copy[lang].orb;
+const orbs = [[70, 60, 5, "#7be3c3"], [330, 70, 7, "#8ab4ff"], [60, 250, 7, "#f2c94c"], [345, 235, 5, "#7be3c3"], [190, 40, 5, "#8ab4ff"], [250, 150, 4, "#7be3c3"], [110, 150, 4, "#f2c94c"]] as const;
+// Bodies as chains of circles (the last point is the head).
+const mine = [[70, 190], [90, 198], [112, 202], [134, 200], [156, 194]] as const;
+const other = [[300, 80], [280, 100], [262, 124], [248, 150], [244, 176]] as const;
+---
+<figure class="glass figure-box orb-fig">
+  <svg viewBox="0 0 400 330" role="img" aria-label={o.alt}>
+    <rect x="1" y="1" width="398" height="328" rx="18" class="orb-board" />
+    <circle cx="200" cy="165" r="150" class="orb-zone" />
+    <text x="200" y="22" text-anchor="middle" class="svg-text svg-muted orb-label">{o.big}</text>
+    {orbs.map(([x, y, r, c], i) => <circle class={i % 2 ? "orb-pulse orb-pulse-b" : "orb-pulse"} cx={x} cy={y} r={r} fill={c} />)}
+    {other.map(([x, y]) => <circle cx={x} cy={y} r="13" class="orb-small" />)}
+    <text x="330" y="115" text-anchor="start" class="svg-text svg-muted orb-label">{o.small}</text>
+    {mine.map(([x, y], i) => <circle cx={x} cy={y} r={i === mine.length - 1 ? 17 : 15} class={i === mine.length - 1 ? "orb-you" : "orb-you-body"} />)}
+    <text x="156" y="199" text-anchor="middle" class="orb-you-text">{o.you}</text>
+    <path d="M178 192 C205 188 225 184 238 178" class="orb-arrow" fill="none" />
+  </svg>
+  <figcaption>{o.caption}</figcaption>
+</figure>

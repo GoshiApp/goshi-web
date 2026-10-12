@@ -1,0 +1,18 @@
+---
+// Shown instead of the page when site.play.enabled is true but a setting is missing.
+// build:check fails on this state, so it should never reach visitors.
+import { copy } from "../content";
+import type { Lang } from "../lib/i18n";
+interface Props { lang: Lang; problems: string[] }
+const { lang, problems } = Astro.props;
+const s = copy[lang].play.broken;
+---
+<section class="section" id="play" data-play-state="broken">
+  <div class="wrap">
+    <aside class="notice risk">
+      <h3>{s.h2}</h3>
+      <p>{s.text}</p>
+      {import.meta.env.DEV && <ul>{problems.map((p) => <li><code>site.play.{p}</code></li>)}</ul>}
+    </aside>
+  </div>
+</section>

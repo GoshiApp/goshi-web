@@ -1,0 +1,97 @@
+# Goshi: Apache rules for the static site in dist/ (used when Apache serves the site; Firebase Hosting uses firebase.json).
+# Everything here is plain .htaccess: no server restart, no Node on the host.
+# Each block is wrapped in <IfModule> so a missing module never causes a 500.
+
+DirectoryIndex index.html
+Options -Indexes -MultiViews
+ServerSignature Off
+AddDefaultCharset UTF-8
+
+# ------------------------------------------------------------------ Errors
+ErrorDocument 404 /404.html
+
+# ------------------------------------------------------------------ Redirects
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# 1. One hop to the canonical origin: HTTPS and no "www".
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !=https [NC]
+RewriteRule ^ https://goshi.app%{REQUEST_URI} [R=301,L]
+RewriteCond %{HTTP_HOST} ^www\.goshi\.app$ [NC]
+RewriteRule ^ https://goshi.app%{REQUEST_URI} [R=301,L]
+
+# 2. Never expose /index.html: the clean URL is the directory (/es/privacidad/).
+RewriteCond %{THE_REQUEST} \s/+(.*?/)?index\.html[\s?] [NC]
+RewriteRule ^ /%1 [R=301,L]
+
+# 3. Language landing: "/" goes to /en/ when the first language the browser lists
+#    among Spanish and English is English; anything else, and every crawler
+#    that sends no Accept-Language, goes to /es/ (the default).
+RewriteCond %{HTTP:Accept-Language} ^(?:(?!es)[a-z]{2,3}(?:-[A-Za-z0-9]+)*(?:;q=[0-9.]+)?\s*,\s*)*en [NC]
+RewriteRule ^$ /en/ [R=302,L]
+RewriteRule ^$ /es/ [R=302,L]
+
+# 4. Old-style or mistyped language roots, e.g. /es or /en without the slash,
+#    are completed by Apache itself (DirectorySlash), so no rule is needed.
+</IfModule>
+
+<IfModule mod_dir.c>
+DirectorySlash On
+</IfModule>
+
+# ------------------------------------------------------------------ Compression
+<IfModule mod_brotli.c>
+AddOutputFilterByType BROTLI_COMPRESS text/html text/css text/plain text/xml application/xml application/javascript text/javascript application/json application/manifest+json image/svg+xml
+</IfModule>
+<IfModule mod_deflate.c>
+AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml application/xml application/javascript text/javascript application/json application/manifest+json image/svg+xml
+</IfModule>
+
+# ------------------------------------------------------------------ Types
+<IfModule mod_mime.c>
+AddType application/manifest+json .webmanifest
+AddType font/woff2 .woff2
+AddType image/webp .webp
+</IfModule>
+
+# ------------------------------------------------------------------ Caching
+# Hashed files in /_astro/ get one year (see /_astro/.htaccess).
+# HTML is short so a new deploy shows up within minutes.
+<IfModule mod_headers.c>
+<FilesMatch "\.(html)$">
+Header set Cache-Control "public, max-age=300, must-revalidate"
+</FilesMatch>
+<FilesMatch "\.(xml|txt|webmanifest)$">
+Header set Cache-Control "public, max-age=3600, must-revalidate"
+</FilesMatch>
+# Files with stable names (icons, social images, the two tiny scripts): one week.
+<FilesMatch "\.(png|webp|ico|js|svg)$">
+Header set Cache-Control "public, max-age=604800"
+</FilesMatch>
+</IfModule>
+
+# ------------------------------------------------------------------ Security headers
+<IfModule mod_headers.c>
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+Header always set X-Frame-Options "DENY"
+Header always set Cross-Origin-Opener-Policy "same-origin"
+Header always set Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()"
+# HSTS: one year. Add "; includeSubDomains" only when every subdomain of goshi.app serves HTTPS,
+# and "; preload" only after deciding to submit the domain to the preload list (hard to undo).
+Header always set Strict-Transport-Security "max-age=31536000"
+# CSP: the site loads nothing from other origins. Scripts are only our own files (no inline scripts).
+# Styles allow inline attributes because a few components set a style="" value.
+Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss://goshi-play-server-suxisoytmq-uc.a.run.app; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+# The on-chain games page (src/site.ts, site.play) talks to one Solana RPC endpoint over HTTPS. Only that page may.
+# TODO(owner): if you change site.play.rpcUrl, change the origin here and in firebase.json (the build checks it when the games are enabled).
+<If "%{REQUEST_URI} =~ m#^/(es/jugar|en/play)/#">
+Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.devnet.solana.com https://goshi-play-server-suxisoytmq-uc.a.run.app wss://goshi-play-server-suxisoytmq-uc.a.run.app; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+</If>
+</IfModule>
+
+# ------------------------------------------------------------------ Private files
+<FilesMatch "^\.(?!well-known)|\.(env|pem|key|log|sh|md|ts|map)$">
+Require all denied
+</FilesMatch>

@@ -1,0 +1,26 @@
+---
+import { site } from "../site";
+import { copy } from "../content";
+import type { Lang } from "../lib/i18n";
+import Icon from "./Icon.astro";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const c = copy[lang].contact;
+// One mailbox may serve every purpose: show each address once.
+const all = [
+  { label: c.support, mail: site.supportEmail },
+  { label: c.privacy, mail: site.privacyEmail },
+  { label: c.security, mail: site.securityEmail },
+];
+const rows = all.filter((r, i) => all.findIndex((x) => x.mail === r.mail) === i);
+---
+<section class="section" id="contact">
+  <div class="wrap">
+    <div class="section-head"><h2>{c.h2}</h2><p>{c.note}</p></div>
+    <ul class="kv contact-list">
+      {rows.map((r) => (
+        <li class="glass"><span><Icon name="mail" size={20} /> {r.label}</span><a href={`mailto:${r.mail}`}><b>{r.mail}</b></a></li>
+      ))}
+    </ul>
+  </div>
+</section>

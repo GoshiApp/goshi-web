@@ -1,0 +1,30 @@
+---
+// The acceptance gate. The page script keeps "join a room" and "buy a boost" locked until it is ticked.
+//
+// The statement is the one the counsel approved: 18+ and compliance with the local law of the person, on their own
+// responsibility. There is no country block by decision of the owner, so this gate is a tick box only.
+// Until a record is required, it is in memory only: the box is empty on every visit and nothing is stored.
+import { copy } from "../content";
+import type { Lang } from "../lib/i18n";
+import { site } from "../site";
+import { isMainnet } from "../lib/play/config";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const g = copy[lang].play.gate;
+const net = !isMainnet(site.play.cluster);
+const netName = site.play.cluster === "testnet" ? "Testnet" : "Devnet";
+---
+<fieldset class="play-gate glass" id="play-gate">
+  <legend>{g.legend}</legend>
+  <label class="gate-check">
+    <input type="checkbox" id="play-gate-check" aria-describedby="play-gate-msg" />
+    <span>{g.label}</span>
+  </label>
+  {net && (
+    <label class="gate-check">
+      <input type="checkbox" id="play-gate-net" aria-describedby="play-gate-msg" />
+      <span>{g.network.replaceAll("{network}", netName)}</span>
+    </label>
+  )}
+  <p class="demo-note" id="play-gate-msg" role="status" aria-live="polite" data-net-required={g.networkRequired.replaceAll("{network}", netName)}></p>
+</fieldset>

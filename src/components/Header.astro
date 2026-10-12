@@ -1,0 +1,41 @@
+---
+import { site } from "../site";
+import { copy } from "../content";
+import WalletChip from "./WalletChip.astro";
+import { path, otherLang, type Lang, type RouteKey } from "../lib/i18n";
+import Icon from "./Icon.astro";
+import Mark from "./Mark.astro";
+interface Props { lang: Lang; route?: RouteKey; switchHref?: string }
+const { lang, route, switchHref } = Astro.props;
+const ui = copy[lang].ui;
+const main: (RouteKey & keyof typeof ui.nav)[] = ["games", "how", "token", "security", "opensource"];
+const more: (RouteKey & keyof typeof ui.nav)[] = ["roadmap", "faq", "risks", "contribute", "support"];
+const current = (k: RouteKey) => (route === k ? "page" : undefined);
+const other = otherLang(lang);
+---
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href={path(lang, "home")} aria-label={ui.homeAria}>
+      <Mark size={38} class="brand-logo" />
+      <span>Goshi</span>
+    </a>
+    <nav class="nav" id="site-nav" aria-label={ui.primaryNavLabel}>
+      {main.map((k) => <a href={path(lang, k)} aria-current={current(k)}>{ui.nav[k]}</a>)}
+      <div class="more" data-more>
+        <button type="button" class="more-btn" aria-expanded="false" aria-controls="more-pop">{ui.nav.more}<Icon name="arrow" size={14} /></button>
+        <div class="pop" id="more-pop">
+          {more.map((k) => <a href={path(lang, k)} aria-current={current(k)}>{ui.nav[k]}</a>)}
+        </div>
+      </div>
+    </nav>
+    <div class="tools">
+      {site.play.enabled && <WalletChip lang={lang} />}
+      <a class="btn btn-gold btn-sm hide-sm" href={path(lang, "play")} aria-current={current("play")}>{ui.nav.play}</a>
+      <button type="button" class="pill theme-toggle" id="theme-toggle" aria-label={ui.themeToggle}>
+        <span class="moon"><Icon name="moon" /></span><span class="sun"><Icon name="sun" /></span>
+      </button>
+      <a class="pill" href={switchHref ?? path(other, route ?? "home")} hreflang={other} lang={other} aria-label={ui.switchAria}>{ui.switchTo}</a>
+      <button type="button" class="pill menu-btn" id="menu-btn" aria-expanded="false" aria-controls="site-nav" aria-label={ui.menuOpen}><Icon name="menu" /></button>
+    </div>
+  </div>
+</header>

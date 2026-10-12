@@ -1,0 +1,19 @@
+---
+// Chooses what the play page shows: "coming soon" (default), a closed state when the settings are
+// incomplete, or the working page. Only the working page imports any wallet code.
+import { site } from "../site";
+import { configProblems } from "../lib/play/config";
+import type { Lang } from "../lib/i18n";
+import PlaySoon from "./PlaySoon.astro";
+import PlayBroken from "./PlayBroken.astro";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const play = site.play;
+const problems = play.enabled ? configProblems(play) : [];
+if (problems.length > 0) console.warn(`[play] site.play is enabled but incomplete: ${problems.join(", ")}`);
+// Loaded only when the feature is on, so the wallet code never reaches the build when it is off.
+const PlayApp = play.enabled && problems.length === 0 ? (await import("./PlayApp.astro")).default : null;
+---
+{!play.enabled && <PlaySoon lang={lang} />}
+{play.enabled && problems.length > 0 && <PlayBroken lang={lang} problems={problems} />}
+{PlayApp && <PlayApp lang={lang} />}

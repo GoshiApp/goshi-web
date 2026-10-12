@@ -1,0 +1,193 @@
+---
+import { inline } from "../lib/inline";
+import { path, type Lang } from "../lib/i18n";
+import type { Block } from "../content/types";
+import Icon from "./Icon.astro";
+import Status from "./Status.astro";
+import OrbIllustration from "./OrbIllustration.astro";
+import Calculators from "./Calculators.astro";
+import Contact from "./Contact.astro";
+import GithubBlock from "./GithubBlock.astro";
+import PlayBlock from "./PlayBlock.astro";
+
+interface Props { lang: Lang; blocks: Block[] }
+const { lang, blocks } = Astro.props;
+const h = (s: string) => inline(s, lang);
+const noticeIcon = { risk: "warn", care: "heart", info: "info" } as const;
+---
+{blocks.map((b) => {
+  switch (b.t) {
+    case "prose":
+      return (
+        <section class="section" id={b.id}>
+          <div class="wrap">
+            <div class:list={["prose-block", b.component && "has-figure"]}>
+              <div class:list={["prose", b.panel && "glass panel"]}>
+                {b.eyebrow && <p class="eyebrow">{b.eyebrow}</p>}
+                <h2>{b.h2}</h2>
+                {b.paras.map((p) => <p set:html={h(p)} />)}
+                {b.list && <ul>{b.list.map((li) => <li set:html={h(li)} />)}</ul>}
+              </div>
+              {b.component === "orb" && <OrbIllustration lang={lang} />}
+            </div>
+          </div>
+        </section>
+      );
+    case "cards":
+      return (
+        <section class="section" id={b.id}>
+          <div class="wrap">
+            <div class="section-head"><h2>{b.h2}</h2>{b.intro && <p set:html={h(b.intro)} />}</div>
+            <div class:list={["cards", b.cols === 4 && "c4", b.cols === 3 && "c3", b.cols === 2 && "c2"]}>
+              {b.items.map((it) => (
+                <article class="card glass">
+                  <span class="icon-chip"><Icon name={it.icon} /></span>
+                  <h3>{it.title}</h3>
+                  <p set:html={h(it.text)} />
+                  {it.status && <Status lang={lang} status={it.status} />}
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      );
+    case "steps":
+      return (
+        <section class="section" id={b.id}>
+          <div class="wrap">
+            <div class="section-head"><h2>{b.h2}</h2>{b.intro && <p set:html={h(b.intro)} />}</div>
+            <ol class="steps">
+              {b.items.map((s) => <li class="glass"><div><h3>{s.title}</h3><p set:html={h(s.text)} /></div></li>)}
+            </ol>
+          </div>
+        </section>
+      );
+    case "table":
+      return (
+        <section class="section" id={b.id}>
+          <div class="wrap">
+            <div class="section-head"><h2>{b.h2}</h2>{b.intro && <p set:html={h(b.intro)} />}</div>
+            <div class="table-wrap" tabindex="0" role="region" aria-label={b.h2}>
+              <table>
+                {b.caption && <caption>{b.caption}</caption>}
+                <thead><tr>{b.head.map((c, i) => <th scope="col" class:list={[b.numeric?.includes(i) && "num"]}>{c}</th>)}</tr></thead>
+                <tbody>
+                  {b.rows.map((r) => <tr>{r.map((c, i) => <td class:list={[b.numeric?.includes(i) && "num"]} set:html={h(c)} />)}</tr>)}
+                </tbody>
+              </table>
+            </div>
+            {b.note && <p class="table-note" set:html={h(b.note)} />}
+          </div>
+        </section>
+      );
+    case "notice":
+      return (
+        <section class="section" id={b.id}>
+          <div class="wrap">
+            <aside class={`notice ${b.tone}`} aria-labelledby={b.id ? `${b.id}-t` : undefined}>
+              <h3 id={b.id ? `${b.id}-t` : undefined}><Icon name={noticeIcon[b.tone]} />{b.title}</h3>
+              {b.paras?.map((p) => <p set:html={h(p)} />)}
+              {b.list && <ul>{b.list.map((li) => <li set:html={h(li)} />)}</ul>}
+            </aside>
+          </div>
+        </section>
+      );
+    case "split":
+      return (
+        <section class="section" id={b.id}>
+          <div class="wrap">
+            <div class="section-head"><h2>{b.h2}</h2>{b.intro && <p set:html={h(b.intro)} />}</div>
+            <div class="split">
+              <div class="glass yes"><h3><Icon name="check" />{b.yes.h}</h3><ul>{b.yes.list.map((li) => <li set:html={h(li)} />)}</ul></div>
+              <div class="glass no"><h3><Icon name="x" />{b.no.h}</h3><ul>{b.no.list.map((li) => <li set:html={h(li)} />)}</ul></div>
+            </div>
+          </div>
+        </section>
+      );
+    case "faq":
+      return (
+        <section class="section" id={b.id}>
+          <div class="wrap">
+            <div class="section-head"><h2>{b.h2}</h2></div>
+            <div class="faq">
+              {b.items.map((it) => (
+                <details class="glass">
+                  <summary>{it.q}</summary>
+                  <div class="answer">{it.a.map((p) => <p set:html={h(p)} />)}</div>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+      );
+    case "phases":
+      return (
+        <section class="section" id={b.id}>
+          <div class="wrap">
+            <div class="section-head"><h2>{b.h2}</h2>{b.intro && <p set:html={h(b.intro)} />}</div>
+            <ol class="phases">
+              {b.items.map((p) => (
+                <li class="glass">
+                  <div>
+                    <h3>{p.name} <Status lang={lang} status={p.status} /></h3>
+                    <p set:html={h(p.text)} />
+                    {p.gate && <p class="gate"><b>{b.gateLabel}:</b> {p.gate}</p>}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+      );
+    case "facts":
+      return (
+        <section class="section" id={b.id}>
+          <div class="wrap">
+            {b.h2 && <div class="section-head"><h2>{b.h2}</h2></div>}
+            <ul class="kv">{b.items.map((f) => <li class="glass"><b>{f.value}</b><span>{f.label}</span></li>)}</ul>
+          </div>
+        </section>
+      );
+    case "cta":
+      return (
+        <div class="wrap">
+          <section class="cta glass">
+            <h2>{b.h2}</h2>
+            <p>{b.text}</p>
+            <div class="btn-row">
+              {b.primary && <a class="btn btn-gold" href={path(lang, b.primary.to)}>{b.primary.label}</a>}
+              {b.secondary && <a class="btn btn-glass" href={path(lang, b.secondary.to)}>{b.secondary.label}</a>}
+            </div>
+          </section>
+        </div>
+      );
+    case "component":
+      if (b.name === "calc") return <Calculators lang={lang} />;
+      if (b.name === "contact") return <Contact lang={lang} />;
+      if (b.name === "github") return <GithubBlock lang={lang} />;
+      if (b.name === "play") return <PlayBlock lang={lang} />;
+      return null;
+    case "legal": {
+      const subst = (s: string) => s;
+      return (
+        <section class="section">
+          <div class="wrap legal">
+            <nav class="toc glass" aria-label={b.tocTitle}>
+              <h2>{b.tocTitle}</h2>
+              <ol>{b.sections.map((s) => <li><a href={`#${s.id}`}>{s.h.replace(/^\d+\.\s*/, "")}</a></li>)}</ol>
+            </nav>
+            <div class="legal-body">
+              {b.sections.map((s) => (
+                <section id={s.id}>
+                  <h2>{s.h}</h2>
+                  {s.paras?.map((p) => <p set:html={h(subst(p))} />)}
+                  {s.list && <ul>{s.list.map((li) => <li set:html={h(li)} />)}</ul>}
+                </section>
+              ))}
+            </div>
+          </div>
+        </section>
+      );
+    }
+  }
+})}

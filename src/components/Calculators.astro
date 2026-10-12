@@ -1,0 +1,112 @@
+---
+// Interactive explainers for the new economy: a royale room (entry fee, paid players, saboteurs on the podium) and a VS match.
+// The math is src/lib/play/split.ts, the same code (and tests) that mirror the contract. The first view is already filled in.
+import { copy } from "../content";
+import { formatLamports, LAMPORTS_PER_SOL } from "../lib/play/amounts";
+import { royalePot, settleRoyale, settleVs } from "../lib/play/split";
+import type { Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const c = copy[lang].calc;
+const locale = lang === "es" ? "es" : "en-US";
+const f = (u: bigint) => formatLamports(u, { locale });
+// Defaults: 0.1 SOL, 10 paid players, 3 saboteurs, no pass seat; VS with 5 players.
+const fee = LAMPORTS_PER_SOL / 10n;
+const pot = royalePot(fee, 10)!;
+const r = settleRoyale(pot, pot, 3)!;
+const v = settleVs(fee, 5)!;
+const royaleRows: { k: string; share: string; kind: "sol" | "goshi" | "none"; v: bigint; total?: boolean }[] = [
+  { k: "first", share: "52.8%", kind: "sol", v: r.prizes[0] },
+  { k: "second", share: "22%", kind: "sol", v: r.prizes[1] },
+  { k: "third", share: "13.2%", kind: "sol", v: r.prizes[2] },
+  { k: "saboteurEach", share: "2%", kind: "sol", v: r.saboteurEach },
+  { k: "burn", share: "1%", kind: "goshi", v: r.buybackBurn },
+  { k: "infra", share: "1.5%", kind: "sol", v: r.infra },
+  { k: "liquidity", share: "2.5%", kind: "sol", v: r.liquidity },
+  { k: "jackpot", share: "5%", kind: "goshi", v: r.rakeJackpot },
+  { k: "prizePool", share: "88%", kind: "none", v: r.prizePool, total: true },
+  { k: "rake", share: "10%", kind: "none", v: r.rake, total: true },
+  { k: "pot", share: "100%", kind: "none", v: pot, total: true },
+  { k: "cash", share: "", kind: "none", v: pot },
+];
+const vsRows: { k: string; v: bigint; total?: boolean }[] = [
+  { k: "winner", v: v.winner }, { k: "loser", v: v.loser }, { k: "burn", v: v.buybackBurn }, { k: "infra", v: v.infra },
+  { k: "liquidity", v: v.liquidity }, { k: "jackpot", v: v.rakeJackpot }, { k: "rake", v: v.rake, total: true }, { k: "pot", v: v.pot, total: true },
+];
+const label = (k: string) => (c.rows as Record<string, string>)[k];
+const i18n = JSON.stringify({
+  locale,
+  invalid: { royale: c.royale.invalid, vs: c.vs.invalid },
+  kinds: c.kinds,
+});
+---
+<section class="section" id="calc">
+  <div class="wrap">
+    <div class="section-head"><h2>{c.h2}</h2><p>{c.intro}</p></div>
+    <script type="application/json" id="calc-i18n" set:html={i18n}></script>
+    <div class="calc-grid">
+      <div class="glass calc" id="calc-royale">
+        <h3>{c.royale.h3}</h3>
+        <div class="calc-inputs">
+          <label class="field">{c.royale.fee}
+            <input type="text" inputmode="decimal" id="calc-fee" value="0.1" autocomplete="off" aria-describedby="calc-fee-help" />
+          </label>
+          <label class="field">{c.royale.paid}
+            <input type="number" id="calc-paid" min="3" max="10" step="1" value="10" inputmode="numeric" aria-describedby="calc-paid-help" />
+          </label>
+        </div>
+        <p class="demo-note" id="calc-fee-help">{c.royale.feeHelp}</p>
+        <p class="demo-note" id="calc-paid-help">{c.royale.paidHelp}</p>
+        <div class="calc-inputs">
+          <label class="field">{c.royale.saboteurs}
+            <input type="number" id="calc-sab" min="0" max="3" step="1" value="3" inputmode="numeric" aria-describedby="calc-sab-help" />
+          </label>
+          <label class="chip-check"><input type="checkbox" id="calc-pass" /><span>{c.royale.pass}</span></label>
+        </div>
+        <p class="demo-note" id="calc-sab-help">{c.royale.saboteursHelp}</p>
+        <p class="demo-note">{c.royale.passHelp}</p>
+        <p class="play-error" id="calc-royale-error" role="alert" hidden></p>
+        <div class="table-wrap" tabindex="0" role="region" aria-label={c.royale.h3}>
+          <table>
+            <thead><tr><th scope="col">{c.head[0]}</th><th scope="col">{c.head[1]}</th><th scope="col" class="num">{c.head[2]}</th></tr></thead>
+            <tbody aria-live="polite" id="calc-royale-body">
+              {royaleRows.map((row) => (
+                <tr class:list={[row.total && "total"]} data-row={row.k} hidden={row.k === "cash"}>
+                  <th scope="row">{label(row.k)}</th>
+                  <td data-kind>{row.kind === "none" ? "" : c.kinds[row.kind]}</td>
+                  <td class="num" data-royale={row.k}>{f(row.v)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="glass calc" id="calc-vs">
+        <h3>{c.vs.h3}</h3>
+        <div class="calc-inputs">
+          <label class="field">{c.vs.fee}
+            <input type="text" inputmode="decimal" id="calc-vs-fee" value="0.1" autocomplete="off" />
+          </label>
+          <label class="field">{c.vs.players}
+            <input type="number" id="calc-vs-players" min="2" max="9" step="1" value="5" inputmode="numeric" aria-describedby="calc-vs-help" />
+          </label>
+        </div>
+        <p class="demo-note" id="calc-vs-help">{c.vs.playersHelp}</p>
+        <p class="play-error" id="calc-vs-error" role="alert" hidden></p>
+        <div class="table-wrap" tabindex="0" role="region" aria-label={c.vs.h3}>
+          <table>
+            <tbody aria-live="polite" id="calc-vs-body">
+              {vsRows.map((row) => (
+                <tr class:list={[row.total && "total"]}><th scope="row">{label(row.k)}</th><td class="num" data-vs={row.k}>{f(row.v)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <p class="table-note">{c.note}</p>
+  </div>
+</section>
+<script>
+  import "../scripts/calc.ts";
+</script>

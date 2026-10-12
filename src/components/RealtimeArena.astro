@@ -1,0 +1,98 @@
+---
+// The real-time arena card: lobby, the game canvas and the result. All of it is filled by src/scripts/play-live.ts,
+// which loads src/lib/play/orb-rush.ts (an implementation of RealtimeArena, see arena-adapter.ts) only when needed.
+import { copy } from "../content";
+import type { Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const c = copy[lang].play;
+const a = c.arena;
+const l = c.live;
+---
+<section class="glass play-panel arena-card" id="realtime-arena" aria-labelledby="arena-h" data-arena="orb-rush">
+  <p class="eyebrow">{a.badge}</p>
+  <h2 id="arena-h">{a.h2}</h2>
+  <p>{a.text}</p>
+  <p class="play-msg" id="play-lobby" role="status" aria-live="polite">{l.lobby.idle}</p>
+
+  <div id="play-lobby-view" class="lobby-view" hidden>
+    <h3 data-lv-title></h3>
+    <p class="lobby-wait" data-lv-wait></p>
+    <p data-lv-vs></p>
+    <h4 data-lv-paid-h></h4>
+    <ul class="seat-grid" data-lv-paid></ul>
+    <h4 data-lv-free-h></h4>
+    <ul class="seat-grid seat-grid-free" data-lv-free></ul>
+    <div class="btn-row">
+      <button type="button" class="btn btn-gold btn-lg" data-lv-fill hidden></button>
+      <button type="button" class="btn btn-glass btn-lg" data-lv-practice></button>
+    </div>
+  </div>
+
+  <div id="realtime-arena-host" class="game" hidden>
+    <div class="game-hud">
+      <p><span>{l.game.time}</span> <b data-hud-time>-</b></p>
+      <p><span>{l.game.mass}</span> <b data-hud-mass>-</b></p>
+      <p><span>{l.game.rank}</span> <b data-hud-rank>-</b></p>
+      <p><span>{l.game.alive}</span> <b data-hud-alive>-</b></p>
+      <p><span>{l.game.ping}</span> <b data-hud-ping>-</b></p>
+      <p><span>{l.game.zone}</span> <b data-hud-zone>-</b></p>
+      <button type="button" class="btn btn-glass btn-sm" data-boost-button aria-pressed="false">{l.game.boost}</button>
+      <button type="button" class="btn btn-glass btn-sm" data-sound-toggle aria-pressed="false">{l.game.soundOff}</button>
+      <label class="quality-pick"><span>{l.game.quality}</span>
+        <select data-quality>
+          <option value="auto">{l.game.qualityAuto}</option>
+          <option value="high">{l.game.qualityHigh}</option>
+          <option value="medium">{l.game.qualityMedium}</option>
+          <option value="low">{l.game.qualityLow}</option>
+        </select>
+      </label>
+      <button type="button" class="btn btn-glass btn-sm" data-diag-toggle aria-pressed="false">{l.game.diagButton}</button>
+      <button type="button" class="btn btn-glass btn-sm" data-report-button>{l.game.reportButton}</button>
+    </div>
+    <p class="game-diag" data-diag hidden role="status" aria-live="off"></p>
+    <p class="demo-note" data-report-note hidden role="status" aria-live="polite"></p>
+    <textarea class="game-report" data-report-text hidden readonly rows="9" spellcheck="false" aria-label={l.game.reportButton}></textarea>
+    <div class="game-board">
+      <div class="game-canvas">
+        <canvas id="play-canvas" tabindex="0" role="img" aria-label={l.game.canvasLabel}></canvas>
+        <p class="zone-banner" data-zone-banner hidden role="status"></p>
+        <ul class="kill-feed" data-feed aria-hidden="true"></ul>
+        <div class="game-loading" data-loading hidden role="status" aria-live="polite">
+          <p class="game-loading-title" data-loading-title></p>
+          <p class="game-loading-count" data-loading-count aria-hidden="true"></p>
+          <p class="game-loading-hint">{l.arenaState.hint}</p>
+        </div>
+        <div class="dead-overlay" data-dead hidden>
+          <h3 data-dead-title></h3>
+          <p data-dead-text></p>
+          <p data-dead-by></p>
+          <p class="demo-note">{l.game.spectating}</p>
+          <div class="btn-row">
+            <button type="button" class="btn btn-glass btn-sm" data-spectate-next>{l.frenzy.spectateNext}</button>
+            <button type="button" class="btn btn-glass btn-sm" data-spectate-free aria-pressed="false">{l.frenzy.spectateFree}</button>
+          </div>
+          <button type="button" class="btn btn-gold" data-dead-again hidden>{l.arenaState.practiceAgain}</button>
+        </div>
+      </div>
+      <div class="game-side">
+        <h3>{l.game.scores}</h3>
+        <ol data-hud-scores></ol>
+        <ul class="legend">
+          <li><i class="lg-paid"></i>{l.game.paidLegend}</li>
+          <li><i class="lg-sab"></i>{l.game.saboteurLegend}</li>
+          <li><i class="lg-you"></i>{l.game.you}</li>
+        </ul>
+      </div>
+    </div>
+    <p class="demo-note">{l.game.controls}</p>
+  </div>
+
+  <div id="play-announce" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <div id="play-result" class="result" hidden tabindex="-1" aria-labelledby="play-result-h">
+    <h3 id="play-result-h">{l.result.h2}</h3>
+    <div id="play-result-body"></div>
+    <button type="button" class="btn btn-glass btn-sm" id="play-result-close">{l.result.close}</button>
+  </div>
+</section>

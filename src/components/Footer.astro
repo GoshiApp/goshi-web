@@ -1,0 +1,37 @@
+---
+import { site } from "../site";
+import { copy } from "../content";
+import { path, type Lang, type RouteKey } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const ui = copy[lang].ui;
+const cols: { h: string; keys: RouteKey[] }[] = [
+  { h: ui.footer.play, keys: ["play", "games", "how", "token"] },
+  { h: ui.footer.trust, keys: ["security", "risks", "faq", "roadmap"] },
+  { h: ui.footer.community, keys: ["opensource", "contribute", "support", "privacy", "terms"] },
+];
+const owner = site.legalName || site.name;
+const socials = Object.entries(site.social).filter(([, v]) => v);
+---
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <p class="brand"><span>Goshi</span></p>
+        <p>{ui.footer.tagline}</p>
+        {socials.length > 0 && <ul class="socials">{socials.map(([k, v]) => <li><a href={v} rel="noopener noreferrer me">{k}</a></li>)}</ul>}
+      </div>
+      {cols.map((c) => (
+        <nav aria-label={c.h}>
+          <h2>{c.h}</h2>
+          <ul>{c.keys.map((k) => <li><a href={path(lang, k)}>{ui.nav[k as keyof typeof ui.nav] ?? copy[lang].pages[k as Exclude<RouteKey, "home">].title}</a></li>)}</ul>
+        </nav>
+      ))}
+    </div>
+    <div class="foot-bottom">
+      <p><strong>{ui.footer.testNotice}</strong></p>
+      <p>{ui.footer.notFinancial}</p>
+      <p>© {site.year} {owner}. {ui.footer.rights} {ui.footer.noCookies} {ui.footer.trademarks}</p>
+    </div>
+  </div>
+</footer>

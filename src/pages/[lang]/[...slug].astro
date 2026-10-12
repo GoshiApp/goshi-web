@@ -1,0 +1,38 @@
+---
+import type { GetStaticPaths } from "astro";
+import Base from "../../layouts/Base.astro";
+import Hero from "../../components/Hero.astro";
+import MeetGoshi from "../../components/MeetGoshi.astro";
+import PageHead from "../../components/PageHead.astro";
+import Blocks from "../../components/Blocks.astro";
+import { copy } from "../../content";
+import { LANGS, ROUTE_KEYS, SLUGS, type Lang, type RouteKey } from "../../lib/i18n";
+import { site } from "../../site";
+import { isMainnet } from "../../lib/play/config";
+
+export const getStaticPaths = (() =>
+  LANGS.flatMap((lang) =>
+    ROUTE_KEYS.map((route) => ({
+      params: { lang, slug: SLUGS[route][lang] || undefined },
+      props: { lang, route },
+    })),
+  )) satisfies GetStaticPaths;
+
+const { lang, route } = Astro.props as { lang: Lang; route: RouteKey };
+const c = copy[lang];
+// The on-chain games page is never indexed while it runs on a test network, whatever site.indexable says.
+const noindex = route === "play" && !isMainnet(site.play.cluster);
+const page = route === "home" ? null : c.pages[route as Exclude<RouteKey, "home">];
+---
+{page === null ? (
+  <Base lang={lang} route="home" title={c.home.title} description={c.home.description}>
+    <Hero lang={lang} />
+    <MeetGoshi lang={lang} />
+    <Blocks lang={lang} blocks={c.home.blocks} />
+  </Base>
+) : (
+  <Base lang={lang} route={route} title={page.title} description={page.description} noindex={noindex}>
+    <PageHead lang={lang} page={page} route={route} />
+    <Blocks lang={lang} blocks={page.blocks} />
+  </Base>
+)}
