@@ -45,18 +45,7 @@ export const home: Home = {
         { title: "Leave", text: "Disconnect and go. Nothing keeps you in a room, and you can set a spending limit for your session. There is no streak you lose and no lock-in." },
       ],
     },
-    {
-      t: "cards",
-      id: "games",
-      h2: "The games",
-      intro: "One game exists today. The rest are ideas that the community can shape.",
-      cols: 3,
-      items: [
-        { icon: "orb", title: "Orb Rush", text: "A 5 minute battle royale of solid bodies. Eat orbs to grow, avoid other bodies and stay inside the shrinking safe zone.", status: "devnet" },
-        { icon: "spark", title: "Next games", text: "Short skill games for rooms of paid players and saboteurs. Nothing is promised or scheduled.", status: "design" },
-        { icon: "users", title: "Ideas from the community", text: "Anyone will be able to propose a game. The process is planned, and not live yet.", status: "idea" },
-      ],
-    },
+    { t: "component", name: "gamesHub" },
     {
       t: "notice",
       id: "status",
@@ -95,12 +84,12 @@ export const home: Home = {
       t: "cards",
       id: "community",
       h2: "A community project",
-      intro: "Goshi is meant to be steered by the people who use it. Here is what is planned, and what is not live yet.",
+      intro: "Goshi is steered by the people who use it. The code is public, ideas are proposed and voted on the site, and problems can be reported to a real mailbox.",
       cols: 3,
       items: [
-        { icon: "github", title: "Public repository", text: "The code is meant to live on GitHub for everyone to read and improve.", status: "pending" },
-        { icon: "vote", title: "Proposals and votes", text: "Ideas as public proposals, discussed and voted on by the community. This is a planned process.", status: "planned" },
-        { icon: "shield", title: "Security reports", text: "A clear way to report problems, with credit for real findings.", status: "planned" },
+        { icon: "github", title: "Public repository", text: "The program, the game server and this website are on GitHub under Apache 2.0, for everyone to read and improve.", status: "live", href: "https://github.com/GoshiApp" },
+        { icon: "vote", title: "Proposals and votes", text: "Propose a game with screenshots and vote on the ideas of others. The most voted go first. Open to wallets that hold $GOSHI.", status: "live", href: "/en/ideas/" },
+        { icon: "shield", title: "Security reports", text: "Found a problem? Write to support@goshi.app. We answer, fix and credit real findings.", status: "live", href: "/en/security/" },
       ],
     },
     {

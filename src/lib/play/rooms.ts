@@ -4,7 +4,7 @@
 import { MAX_FREE, MAX_PAID } from "./split.ts";
 
 export type RoomState = "waiting" | "active";
-export type RoomMode = "royale" | "vs";
+export type RoomMode = "royale" | "vs" | "duel";
 
 export interface RoomView {
   roomId: bigint;
@@ -17,6 +17,8 @@ export interface RoomView {
   free: string[];
   /** 1 when a pass seat took one of the paid seats (nobody paid for it). */
   passes: number;
+  /** The invited wallets of a duel; empty for any other room. */
+  guests: string[];
 }
 
 /** Anchor decodes a Rust enum as an object with one key, e.g. `{ waiting: {} }` (camelCase of the IDL's variant). */
@@ -29,7 +31,7 @@ function variant<T extends string>(raw: unknown, allowed: readonly T[]): T {
 }
 
 export const parseRoomState = (raw: unknown): RoomState => variant(raw, ["waiting", "active"] as const);
-export const parseRoomMode = (raw: unknown): RoomMode => variant(raw, ["royale", "vs"] as const);
+export const parseRoomMode = (raw: unknown): RoomMode => variant(raw, ["royale", "vs", "duel"] as const);
 
 interface RawRoom {
   roomId: { toString(): string };
@@ -39,6 +41,7 @@ interface RawRoom {
   paid: { toBase58(): string }[];
   free: { toBase58(): string }[];
   passes?: number;
+  guests?: { toBase58(): string }[];
 }
 
 /** Converts a decoded `MatchRoom` account into plain data. */
@@ -51,6 +54,7 @@ export function toRoomView(raw: RawRoom): RoomView {
     paid: raw.paid.map((p) => p.toBase58()),
     free: raw.free.map((p) => p.toBase58()),
     passes: raw.passes ?? 0,
+    guests: (raw.guests ?? []).map((g) => g.toBase58()),
   };
 }
 
@@ -73,6 +77,8 @@ export function canJoinPaid(room: RoomView, wallet: string | null | undefined): 
   if (room.state !== "waiting") return { ok: false, reason: "notWaiting" };
   if (room.paid.length >= MAX_PAID) return { ok: false, reason: "roomFull" };
   if (hasJoined(room, wallet)) return { ok: false, reason: "alreadyJoined" };
+  // A duel is private by contract: the program only seats the host and the invited wallets.
+  if (room.mode === "duel" && !(wallet && room.guests.includes(wallet))) return { ok: false, reason: "notWaiting" };
   return { ok: true };
 }
 

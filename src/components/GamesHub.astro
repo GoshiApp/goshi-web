@@ -1,0 +1,45 @@
+---
+// The games section of the home: the live game, the next games (the most voted community ideas, read live) and the way in
+// to propose one.
+import { site } from "../site";
+import { copy } from "../content";
+import { path, type Lang } from "../lib/i18n";
+import Icon from "./Icon.astro";
+import Status from "./Status.astro";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = copy[lang].ideas;
+const h = t.hub;
+const api = site.play.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+const data = JSON.stringify({ api, empty: h.nextEmpty, ideasHref: path(lang, "ideas") });
+---
+<section class="section" id="games">
+  <div class="wrap">
+    <div class="section-head"><h2>{h.h2}</h2><p>{h.intro}</p></div>
+    <div class="cards c3">
+      <article class="card glass">
+        <span class="icon-chip"><Icon name="orb" /></span>
+        <h3>{h.orbTitle}</h3>
+        <p>{h.orbText}</p>
+        <Status lang={lang} status="devnet" />
+        <p class="card-cta"><a class="btn btn-gold" href={`${path(lang, "play")}?play=1`}>{h.orbCta}</a></p>
+      </article>
+      <article class="card glass">
+        <span class="icon-chip"><Icon name="spark" /></span>
+        <h3>{h.nextTitle}</h3>
+        <p>{h.nextText}</p>
+        <ol class="top-ideas" data-top-ideas><li class="muted">{t.loading}</li></ol>
+        <p class="card-cta"><a class="btn btn-glass" href={path(lang, "ideas")}>{h.nextCta}</a></p>
+      </article>
+      <article class="card glass">
+        <span class="icon-chip"><Icon name="users" /></span>
+        <h3>{h.ideasTitle}</h3>
+        <p>{h.ideasText}</p>
+        <Status lang={lang} status="idea" />
+        <p class="card-cta"><a class="btn btn-gold" href={`${path(lang, "ideas")}#proponer`}>{h.ideasCta}</a></p>
+      </article>
+    </div>
+    <script type="application/json" id="games-hub-data" set:html={data}></script>
+  </div>
+</section>
+<script>import "../scripts/ideas-home.ts";</script>

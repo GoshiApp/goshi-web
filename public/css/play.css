@@ -257,3 +257,46 @@
 .game-side ol { font-variant-numeric: tabular-nums; }
 @media (max-width: 700px) { .game-board canvas { box-shadow: none; } }
 .zone-banner:not([hidden]) ~ .kill-feed { top: 62px; }
+
+/* Full screen: the canvas and its overlays take the whole screen (the Fullscreen API, or a fixed layout where it is missing). */
+.fs-fab { position: absolute; left: 10px; top: 46px; z-index: 7; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line-strong); background: rgba(5, 8, 25, 0.6); color: var(--ink); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.fs-hud { display: none; position: absolute; left: 56px; top: 10px; z-index: 7; margin: 0; padding: 6px 10px; border-radius: 10px; background: rgba(5, 8, 25, 0.6); font-weight: 800; font-size: 0.95rem; color: #fff; pointer-events: none; }
+.game-canvas.is-fs .fs-hud { display: block; }
+.game-canvas.is-fs, .game-canvas:fullscreen { position: fixed; inset: 0; z-index: 9999; width: 100vw; height: 100vh; height: 100dvh; margin: 0; background: #050818; }
+.game-canvas:fullscreen { position: relative; }
+.game-canvas.is-fs canvas, .game-canvas:fullscreen canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; max-height: none; aspect-ratio: auto; border-radius: 0; border: 0; }
+.game-canvas.is-fs .fs-fab { top: 10px; left: 10px; }
+.game-canvas.is-fs .fs-hud { left: 56px; }
+html.has-pseudo-fs, html.has-pseudo-fs body { overflow: hidden; }
+
+/* Phones: a match asks to be played sideways, like the other .io games. */
+.rotate-gate { position: fixed; inset: 0; z-index: 10000; background: #000; color: #fff; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
+.rotate-gate[hidden] { display: none; }
+.rotate-gate h3 { margin: 0; font-size: 1.5rem; }
+.rotate-gate p { margin: 0; color: #c4cdf0; }
+.rotate-gate .link-btn { margin-top: 10px; color: #8ab4ff; }
+
+/* Some phone browsers: a fixed element inside a card with a blur filter is positioned against the card, not the screen.
+   While the board is full screen, nothing around it may blur, move or clip, and the page chrome steps aside. */
+html.has-pseudo-fs .glass, html.has-pseudo-fs .play-panel, html.has-pseudo-fs .arena-card, html.has-pseudo-fs main, html.has-pseudo-fs section,
+html.has-pseudo-fs .wrap, html.has-pseudo-fs .game, html.has-pseudo-fs .game-board {
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important; transform: none !important; filter: none !important;
+  contain: none !important; will-change: auto !important; perspective: none !important; overflow: visible !important; clip-path: none !important;
+}
+html.has-pseudo-fs .site-header, html.has-pseudo-fs .ticker, html.has-pseudo-fs .site-footer { display: none !important; }
+html.has-pseudo-fs .game-canvas.is-pseudo-fs { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; height: 100dvh !important; z-index: 2147483000 !important; }
+
+/* An element with the hidden attribute is hidden, whatever display its class sets (the connect buttons stayed after connecting). */
+[hidden] { display: none !important; }
+
+/* Address and balances stay blurred until the person shows them (safe for recording and streaming). */
+#play-wallet-connected[data-private="1"] #play-wallet-address,
+#play-wallet-connected[data-private="1"] .play-dl dd { filter: blur(7px); user-select: none; }
+
+/* Elimination card: small, see-through, draggable by its title and collapsible so it never hides the match. */
+.dead-overlay { max-width: min(300px, calc(100% - 20px)); padding: 8px 12px; background: color-mix(in srgb, var(--surface-solid) 72%, transparent); opacity: 0.94; }
+.dead-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: grab; touch-action: none; }
+.dead-head h3 { margin: 0; font-size: 0.95rem; }
+.dead-min { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); font-weight: 900; cursor: pointer; line-height: 1; }
+.dead-overlay.min > :not(.dead-head) { display: none; }
+.dead-overlay p { font-size: 0.85rem; }

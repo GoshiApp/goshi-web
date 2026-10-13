@@ -8,7 +8,7 @@ import Mark from "./Mark.astro";
 interface Props { lang: Lang; route?: RouteKey; switchHref?: string }
 const { lang, route, switchHref } = Astro.props;
 const ui = copy[lang].ui;
-const main: (RouteKey & keyof typeof ui.nav)[] = ["games", "how", "token", "security", "opensource"];
+const main: (RouteKey & keyof typeof ui.nav)[] = ["games", "matches", "ideas", "how", "token", "security", "opensource"];
 const more: (RouteKey & keyof typeof ui.nav)[] = ["roadmap", "faq", "risks", "contribute", "support"];
 const current = (k: RouteKey) => (route === k ? "page" : undefined);
 const other = otherLang(lang);

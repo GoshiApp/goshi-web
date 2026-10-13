@@ -5,7 +5,7 @@ export type Lang = (typeof LANGS)[number];
 export const DEFAULT_LANG: Lang = "es";
 
 export const ROUTE_KEYS = [
-  "home", "games", "how", "play", "token", "security", "risks", "faq",
+  "home", "games", "ideas", "verify", "matches", "replay", "invite", "profile", "how", "play", "token", "security", "risks", "faq",
   "opensource", "contribute", "roadmap", "support", "privacy", "terms",
 ] as const;
 export type RouteKey = (typeof ROUTE_KEYS)[number];
@@ -14,6 +14,12 @@ export type RouteKey = (typeof ROUTE_KEYS)[number];
 export const SLUGS: Record<RouteKey, Record<Lang, string>> = {
   home: { es: "", en: "" },
   games: { es: "juegos", en: "games" },
+  ideas: { es: "ideas", en: "ideas" },
+  verify: { es: "verificar", en: "verify" },
+  matches: { es: "partidas", en: "matches" },
+  replay: { es: "reproductor", en: "replay" },
+  invite: { es: "invitar", en: "invite" },
+  profile: { es: "perfil", en: "profile" },
   how: { es: "como-funciona", en: "how-it-works" },
   play: { es: "jugar", en: "play" },
   token: { es: "token", en: "token" },

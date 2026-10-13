@@ -7,7 +7,7 @@
 import type { EndProof } from "./protocol.ts";
 import { buildMap, decodeReplay, simulate, type Sym } from "./frenzy-sim.ts";
 
-export type StepId = "commit" | "seed" | "replay" | "mass" | "chain";
+export type StepId = "commit" | "seed" | "replay" | "mass" | "arena" | "chain";
 export interface Step { id: StepId; ok: boolean | null; detail?: string }
 
 export interface CheckInput {
@@ -60,7 +60,7 @@ export async function verifyMatch(i: CheckInput, fetchFn: typeof fetch = fetch):
   const seed = (new DataView(seedHash.buffer, seedHash.byteOffset).getUint32(0, true) & 0x7fffffff) || 1;
   let bytes: Uint8Array | null = null;
   try {
-    const r = await fetchFn(`${i.serverHttp}/replay/${encodeURIComponent(i.roomId)}/${encodeURIComponent(i.wallet)}`);
+    const r = await fetchFn(`${i.serverHttp}/replay/${encodeURIComponent(i.roomId)}/${encodeURIComponent(i.wallet)}`, { cache: "no-store" });
     if (r.ok) bytes = new Uint8Array(await r.arrayBuffer());
   } catch {
     bytes = null;
@@ -74,9 +74,10 @@ export async function verifyMatch(i: CheckInput, fetchFn: typeof fetch = fetch):
     } catch {
       rep = null;
     }
-    steps.push({ id: "seed", ok: rep ? rep.seed === seed : false, detail: String(seed) });
+    steps.push({ id: "seed", ok: rep ? rep.seed === seed : false, detail: rep ? `${seed} / ${rep.seed}` : `no file (${bytes.length} B)` });
     const mine = p.replays.find((r) => r.w === i.wallet);
-    steps.push({ id: "replay", ok: mine ? hex(await sha256(bytes)) === mine.hash : false, detail: `${bytes.length} B` });
+    const got = hex(await sha256(bytes));
+    steps.push({ id: "replay", ok: mine ? got === mine.hash : false, detail: mine ? `${bytes.length} B, ${got.slice(0, 8)} / ${mine.hash.slice(0, 8)}` : "wallet not in the record" });
     const mass = p.snapshot.mass;
     if (rep && mass && i.claimedMass !== null) {
       const map = buildMap(rep.seed, { mass: mass as Record<Sym, number> });
@@ -84,6 +85,21 @@ export async function verifyMatch(i: CheckInput, fetchFn: typeof fetch = fetch):
       steps.push({ id: "mass", ok: Math.abs(out.m - i.claimedMass) < 0.06, detail: out.m.toFixed(1) });
     } else {
       steps.push({ id: "mass", ok: null });
+    }
+  }
+
+  // 4. the record of the whole arena phase: every steering and boost change of every player, one file, one hash.
+  const arenaEntry = p.replays.find((r) => r.w === "arena");
+  if (arenaEntry) {
+    try {
+      const r = await fetchFn(`${i.serverHttp}/replay/${encodeURIComponent(i.roomId)}/arena`, { cache: "no-store" });
+      if (r.ok) {
+        const ab = new Uint8Array(await r.arrayBuffer());
+        const g2 = hex(await sha256(ab));
+        steps.push({ id: "arena", ok: g2 === arenaEntry.hash, detail: `${ab.length} B, ${g2.slice(0, 8)} / ${arenaEntry.hash.slice(0, 8)}` });
+      } else steps.push({ id: "arena", ok: null });
+    } catch {
+      steps.push({ id: "arena", ok: null });
     }
   }
 

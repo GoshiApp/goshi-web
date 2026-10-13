@@ -45,18 +45,7 @@ export const home: Home = {
         { title: "Sal", text: "Desconéctate y listo. Nada te retiene en una sala y puedes poner un límite de gasto a tu sesión. No hay una racha que pierdas ni ataduras." },
       ],
     },
-    {
-      t: "cards",
-      id: "games",
-      h2: "Los juegos",
-      intro: "Hoy existe un solo juego. Los demás son ideas que la comunidad puede moldear.",
-      cols: 3,
-      items: [
-        { icon: "orb", title: "Orb Rush", text: "Una batalla real de 5 minutos de cuerpos sólidos. Come orbes para crecer, evita los otros cuerpos y quédate dentro de la zona segura que se reduce.", status: "devnet" },
-        { icon: "spark", title: "Próximos juegos", text: "Juegos de habilidad cortos para salas con jugadores de pago y saboteadores. No se promete ni se programa nada.", status: "design" },
-        { icon: "users", title: "Ideas de la comunidad", text: "Cualquiera podrá proponer un juego. El proceso está planificado y todavía no está activo.", status: "idea" },
-      ],
-    },
+    { t: "component", name: "gamesHub" },
     {
       t: "notice",
       id: "status",
@@ -98,9 +87,9 @@ export const home: Home = {
       intro: "Goshi está pensado para que lo guíen quienes lo usan. Esto es lo que está planificado y lo que todavía no está activo.",
       cols: 3,
       items: [
-        { icon: "github", title: "Repositorio público", text: "El código debe vivir en GitHub para que todos lo lean y lo mejoren.", status: "pending" },
-        { icon: "vote", title: "Propuestas y votos", text: "Las ideas como propuestas públicas, discutidas y votadas por la comunidad. Es un proceso planificado.", status: "planned" },
-        { icon: "shield", title: "Avisos de seguridad", text: "Una forma clara de avisar de problemas, con reconocimiento a los hallazgos reales.", status: "planned" },
+        { icon: "github", title: "Repositorio público", text: "El programa, el servidor de juego y este sitio están en GitHub con licencia Apache 2.0, para que todos los lean y los mejoren.", status: "live", href: "https://github.com/GoshiApp" },
+        { icon: "vote", title: "Propuestas y votos", text: "Propón un juego con capturas y vota las ideas de los demás. Las más votadas van primero. Abierto a billeteras que tengan $GOSHI.", status: "live", href: "/es/ideas/" },
+        { icon: "shield", title: "Reportes de seguridad", text: "¿Encontraste un problema? Escribe a support@goshi.app. Respondemos, corregimos y damos crédito a los hallazgos reales.", status: "live", href: "/es/seguridad/" },
       ],
     },
     {

@@ -1,0 +1,21 @@
+---
+// Share buttons for every page. When a wallet is connected the shared address carries it as the referrer (src/scripts/share.ts).
+import { copy } from "../content";
+import { path, type Lang } from "../lib/i18n";
+import { site } from "../site";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = copy[lang].invite.share;
+const data = JSON.stringify({ lang, text: t.text, copied: t.copied, home: new URL(path(lang, "home"), site.url).toString().replace(/\/$/, "/") });
+---
+<div class="share-bar" data-share>
+  <span class="share-label">{t.label}</span>
+  <button type="button" class="btn btn-glass btn-sm" data-share-native hidden>{t.native}</button>
+  <button type="button" class="btn btn-glass btn-sm" data-share-copy>{t.copy}</button>
+  <a class="btn btn-glass btn-sm" data-share-x target="_blank" rel="noopener noreferrer">{t.x}</a>
+  <a class="btn btn-glass btn-sm" data-share-tg target="_blank" rel="noopener noreferrer">{t.telegram}</a>
+  <a class="btn btn-glass btn-sm" data-share-wa target="_blank" rel="noopener noreferrer">{t.whatsapp}</a>
+  <span class="muted small" data-share-note role="status" aria-live="polite"></span>
+  <script type="application/json" data-share-data set:html={data}></script>
+</div>
+<script>import "../scripts/share.ts";</script>

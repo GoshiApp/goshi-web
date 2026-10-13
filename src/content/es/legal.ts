@@ -12,7 +12,7 @@ export const privacy: Page = {
       t: "notice",
       tone: "risk",
       title: "Borrador para el abogado",
-      paras: ["TODO(owner): este texto debe ser revisado y completado por un abogado antes de hacer público el sitio. Los puntos marcados TODO(owner) son datos o decisiones que faltan."],
+      paras: ["Esta política fue revisada con el asesor legal del proyecto el 2026-10-12 y describe el lanzamiento suave. Puede cambiar antes y después del lanzamiento en mainnet: mira la fecha. Los puntos que sigan marcados TODO(owner) son decisiones que aún no son definitivas."],
     },
     {
       t: "legal",
@@ -40,8 +40,8 @@ export const privacy: Page = {
           id: "website",
           h: "3. El sitio web",
           paras: [
-            "Las páginas cargan solo archivos de goshi.app. Tu elección de tema oscuro o claro, y el nombre de la última billetera que conectaste (por ejemplo \"phantom\", nunca una dirección ni una clave), se guardan en tu navegador y no se envían a ningún sitio. El servidor que aloja el sitio puede guardar registros técnicos estándar, como la hora de una solicitud y una dirección de red abreviada, para mantener el servicio en marcha y seguro. TODO(owner): nombrar el proveedor de alojamiento, el contenido de los registros y el plazo de conservación.",
-            "La página de juego hace solicitudes desde tu navegador a un nodo de la red Solana (un proveedor de RPC) y al servidor de juego. El proveedor del nodo puede ver tu dirección de red y la dirección de billetera que consultas. TODO(owner): nombrar al proveedor de RPC y enlazar su política.",
+            "Las páginas cargan solo archivos de goshi.app. Tu elección de tema oscuro o claro, y el nombre de la última billetera que conectaste (por ejemplo \"phantom\", nunca una dirección ni una clave), se guardan en tu navegador y no se envían a ningún sitio. Para contar visitantes, tu navegador guarda un identificador aleatorio que no está ligado a ti y lo envía al servidor de juego una vez por pestaña. El servidor lo convierte en una huella con sal que cambia en cada reinicio, la mantiene solo en memoria durante el día para no contarte dos veces, y suma uno a un total. No guarda el identificador, ni ninguna dirección de red, ni te sigue entre días. Además se cuenta una sola vez cada billetera distinta que se conecta (una dirección de billetera es un dato público). Si quieres que tu navegador no cuente, borra los datos del sitio. Sin cookies. El servidor que aloja el sitio puede guardar registros técnicos estándar, como la hora de una solicitud y una dirección de red abreviada, para mantener el servicio en marcha y seguro. El sitio lo sirve Firebase Hosting (Google), que conserva esos registros según su propia política.",
+            "La página de juego hace solicitudes desde tu navegador a un nodo de la red Solana (un proveedor de RPC) y al servidor de juego. El proveedor del nodo puede ver tu dirección de red y la dirección de billetera que consultas. En la red de pruebas es el nodo público de Solana devnet. En mainnet es un proveedor de pago (QuickNode), cuya política también aplica.",
           ],
         },
         {
@@ -60,7 +60,7 @@ export const privacy: Page = {
             "Tus entradas de movimiento y los resultados de las partidas en las que participas, incluida la clasificación.",
             "Datos técnicos necesarios para correr el servicio, como horas de conexión y errores.",
           ],
-          paras: ["TODO(owner): el plazo de conservación, dónde se aloja el servidor y si los resultados de las partidas se guardan como registro público."],
+          paras: ["Los registros de las partidas (las direcciones de billetera de los participantes, la clasificación, la transacción de cierre y las huellas de los movimientos) se conservan indefinidamente como un registro público que cualquiera puede verificar. El sitio y el servidor de juego se alojan en Google Cloud, en Estados Unidos. El conteo de visitantes no guarda nada más allá del día."],
         },
         {
           id: "use",
@@ -76,7 +76,7 @@ export const privacy: Page = {
           id: "sharing",
           h: "7. Quién más lo ve",
           paras: [
-            "Los proveedores que corren el sitio, el servidor de juego y el nodo de la red. El software de billetera que elijas, que tiene su propia política. El Solana Explorer, si sigues un enlace a él. Las autoridades, cuando la ley lo exija. TODO(owner): listar los encargados del tratamiento y los países donde se tratan los datos.",
+            "Los proveedores que corren el sitio, el servidor de juego y el nodo de la red. El software de billetera que elijas, que tiene su propia política. El Solana Explorer, si sigues un enlace a él. Las autoridades, cuando la ley lo exija. Los encargados son Google Cloud (alojamiento del sitio y del servidor de juego, Estados Unidos) y un proveedor de RPC de Solana (QuickNode en mainnet).",
           ],
         },
         {
@@ -99,7 +99,7 @@ export const privacy: Page = {
         {
           id: "changes",
           h: "11. Cambios",
-          paras: ["Actualizaremos esta página cuando algo cambie y cambiaremos su fecha. TODO(owner): cómo se avisa de los cambios."],
+          paras: ["Actualizaremos esta página cuando algo cambie y cambiaremos su fecha; si el cambio es importante, también publicaremos un aviso en el sitio."],
         },
       ],
     },
@@ -118,7 +118,7 @@ export const terms: Page = {
       t: "notice",
       tone: "risk",
       title: "Borrador para el abogado",
-      paras: ["TODO(owner): estos términos deben ser revisados y completados por un abogado antes de hacer público el sitio. Nada de aquí es definitivo."],
+      paras: ["Estos términos fueron revisados con el asesor legal del proyecto el 2026-10-12 y describen el lanzamiento suave. Pueden cambiar antes y después del lanzamiento en mainnet: mira la fecha. Los puntos que sigan marcados TODO(owner) son decisiones que aún no son definitivas."],
     },
     {
       t: "legal",
@@ -135,7 +135,8 @@ export const terms: Page = {
           list: [
             "Debes tener al menos 18 años o la mayoría de edad legal de tu país.",
             "Al conectar tu billetera y participar, confirmas bajo tu propia responsabilidad que eres mayor de edad (+18) y que el acceso a juegos en blockchain no viola las leyes o regulaciones aplicables en tu jurisdicción de residencia. Goshi no bloquea países: cumplir las leyes locales es responsabilidad tuya.",
-            "Eres responsable de saber si la ley de donde vives permite juegos con entrada y premios.",
+            "Eres responsable de saber si la ley de donde vives permite juegos con entrada y premios. El servicio no se ofrece a personas ni lugares sancionados (por ejemplo, las listas de la OFAC) y confirmas que no eres uno de ellos.",
+            "En la fase de lanzamiento suave, con montos pequeños, no hay verificación de identidad. Los impuestos y las obligaciones de cumplimiento sobre cualquier premio son tuyos.",
           ],
         },
         {
@@ -199,7 +200,7 @@ export const terms: Page = {
           id: "disclaimer",
           h: "11. Sin garantía y límites de responsabilidad",
           paras: [
-            "El servicio se ofrece tal cual[[t:, en pruebas,]] sin garantía. El contrato [[n:no está auditado y ]]puede tener errores. No somos responsables de las pérdidas por el uso del servicio, por fallos de la red o de la billetera, ni por decisiones que tomes, en la medida que la ley lo permita. TODO(owner): los límites exactos para cada jurisdicción.",
+            "El servicio se ofrece tal cual[[t:, en pruebas,]] sin garantía. El contrato [[n:no está auditado y ]]puede tener errores. No somos responsables de las pérdidas por el uso del servicio, por fallos de la red o de la billetera, ni por decisiones que tomes, en la medida que la ley lo permita. Las jurisdicciones sancionadas son las de las listas de la OFAC; otras restricciones dependen de donde vivas y son tu responsabilidad.",
           ],
         },
         {

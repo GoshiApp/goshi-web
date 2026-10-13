@@ -43,7 +43,7 @@ const data = {
   walletNames: WALLET_NAMES,
   homeHref: path(lang, "home"),
   t: {
-    quick: c.quick,
+    quick: c.quick, duel: c.duel,
     wallet: c.wallet, rooms: c.rooms, practice: c.practice, pot: { room: c.pot.room, unavailable: c.pot.unavailable },
     entry: c.entry, vsOffer: c.vsOffer, tx: c.tx, errors: c.errors, exact: c.exact, live: c.live, gate: c.gate,
     potLabels: {
@@ -61,6 +61,46 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
   <div class="wrap play-stack">
     <script type="application/json" id="play-data" set:html={json}></script>
 
+    <section class="glass play-panel" id="play-wallet" aria-labelledby="play-wallet-h">
+        <h2 id="play-wallet-h">{c.wallet.h2}</h2>
+        <p>{c.wallet.intro}</p>
+        <div class="wallet-mobile" id="play-wallet-mobile" hidden>
+          <h3>{c.wallet.mobileH2}</h3>
+          <p>{c.wallet.mobileText}</p>
+          <div class="btn-row">
+            {WALLET_IDS.map((w) => (
+              <a class="btn btn-gold" data-open-wallet={w} href={WALLET_INSTALL_URLS[w]} rel="noopener noreferrer">{fill(c.wallet.openIn, { wallet: WALLET_NAMES[w] })}</a>
+            ))}
+          </div>
+          <p class="demo-note">{c.wallet.mobileNoWallet}</p>
+          <ul class="mobile-installs">
+            {WALLET_IDS.map((w) => <li><a href={WALLET_INSTALL_URLS[w]} rel="noopener noreferrer">{fill(c.wallet.install, { wallet: WALLET_NAMES[w] })}</a></li>)}
+          </ul>
+        </div>
+        <div class="wallet-opts" id="play-wallet-choose">
+          {WALLET_IDS.map((w) => (
+            <div class="wallet-opt">
+              <button type="button" class="btn btn-gold" data-connect={w}>{fill(c.wallet.connectWith, { wallet: WALLET_NAMES[w] })}</button>
+              <p class="demo-note" data-wallet-state={w}></p>
+              <a class="demo-note" data-install={w} href={WALLET_INSTALL_URLS[w]} rel="noopener noreferrer" hidden>{fill(c.wallet.install, { wallet: WALLET_NAMES[w] })}</a>
+            </div>
+          ))}
+        </div>
+        <div id="play-wallet-connected" data-private="1" hidden>
+          <p><strong id="play-wallet-who"></strong></p>
+          <p class="mono-line"><code id="play-wallet-address"></code></p>
+          <dl class="play-dl" aria-label={c.wallet.balances}>
+            <div><dt>{fill(c.wallet.sol, { unit: unitSol })}</dt><dd id="play-bal-sol">...</dd></div>
+            <div><dt>{fill(c.wallet.goshi, { unit: unitGoshi })}</dt><dd id="play-bal-goshi">...</dd></div>
+          </dl>
+          <button type="button" class="btn btn-glass btn-sm" id="play-privacy" data-show={c.wallet.showDetails} data-hide={c.wallet.hideDetails}></button>
+          <button type="button" class="btn btn-glass btn-sm" id="play-disconnect">{c.wallet.disconnect}</button>
+        </div>
+        <p id="play-wallet-msg" class="play-msg" role="status" aria-live="polite"></p>
+        <p><a id="play-wallet-help" href="https://docs.phantom.app/developer-powertools/domain-and-transaction-warnings" rel="noopener noreferrer" hidden>{c.wallet.blockedLink}</a></p>
+        {c.wallet.netHelp && <p class="demo-note net-help" id="play-net-help">{fill(c.wallet.netHelp, { network: networkName })}</p>}
+    </section>
+
     <section class="glass play-now" id="play-now" aria-labelledby="play-now-h">
       <p class="eyebrow">{c.practice.eyebrow}</p>
       <h2 id="play-now-h">{c.practice.h2}</h2>
@@ -74,6 +114,7 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
           </label>
         ))}
       </fieldset>
+      <p class="skin-quick" data-names={JSON.stringify(c.live.skins.names)}><span class="skin-quick-label">{c.live.skins.quick}: <b data-skin-current>-</b></span> <a class="link-btn" href={path(lang, "profile")}>{c.live.skins.manage}</a></p>
       <div class="play-now-row">
         <label class="play-now-name" for="play-now-name">
           <span>{c.practice.nameLabel}</span>
@@ -84,6 +125,37 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
       </div>
       <p class="demo-note">{c.practice.note}</p>
       <p class="play-msg" id="play-now-msg" role="status" aria-live="polite"></p>
+
+      <div class="quick duel-card" id="play-duel" aria-labelledby="play-duel-h">
+        <h3 id="play-duel-h">{c.duel.h2}</h3>
+        <p class="demo-note">{c.duel.intro}</p>
+        <div id="play-duel-invites" class="duel-invites" hidden></div>
+        <p class="play-msg" id="play-duel-incoming" hidden></p>
+        <button type="button" class="btn btn-gold" id="play-duel-accept" hidden>{c.duel.accept}</button>
+        <div id="play-duel-make">
+          <p class="muted small"><b>{c.duel.tiersLabel}</b></p>
+          <div class="quick-row" id="play-duel-tiers" role="group"></div>
+          <p class="muted small"><b>{c.duel.guestsLabel}</b></p>
+          <div id="play-duel-guests" class="duel-guests">
+            {[0, 1, 2, 3].map((i) => <input type="text" class="duel-guest" data-guest={String(i)} placeholder={c.duel.guestPh} autocomplete="off" spellcheck="false" hidden={i > 0} />)}
+          </div>
+          <button type="button" class="btn btn-glass btn-sm" id="play-duel-add">{c.duel.addGuest}</button>
+          <button type="button" class="btn btn-gold" id="play-duel-create">{c.duel.create}</button>
+          <p class="demo-note">{c.duel.rules}</p>
+        </div>
+        <p class="play-msg" id="play-duel-msg" role="status" aria-live="polite"></p>
+        <div id="play-duel-share" hidden>
+          <label for="play-duel-link">{c.duel.shareLabel}</label>
+          <input id="play-duel-link" type="text" readonly />
+          <div class="btn-row">
+            <button type="button" class="btn btn-glass btn-sm" id="play-duel-copy">{c.duel.copy}</button>
+            <button type="button" class="btn btn-glass btn-sm" id="play-duel-native" hidden>{c.duel.share}</button>
+            <button type="button" class="btn btn-gold btn-sm" id="play-duel-start" hidden>{c.duel.startNow}</button>
+          </div>
+        </div>
+        <h4>{c.duel.liveH}</h4>
+        <ul class="duel-live" id="play-duel-live"><li class="muted">{c.duel.liveNone}</li></ul>
+      </div>
 
       <div class="quick" id="play-quick" aria-labelledby="play-quick-h">
         <h3 id="play-quick-h">{c.quick.h2}</h3>
@@ -187,44 +259,6 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
 
       <EligibilityGate lang={lang} />
 
-      <section class="glass play-panel" id="play-wallet" aria-labelledby="play-wallet-h">
-        <h2 id="play-wallet-h">{c.wallet.h2}</h2>
-        <p>{c.wallet.intro}</p>
-        <div class="wallet-mobile" id="play-wallet-mobile" hidden>
-          <h3>{c.wallet.mobileH2}</h3>
-          <p>{c.wallet.mobileText}</p>
-          <div class="btn-row">
-            {WALLET_IDS.map((w) => (
-              <a class="btn btn-gold" data-open-wallet={w} href={WALLET_INSTALL_URLS[w]} rel="noopener noreferrer">{fill(c.wallet.openIn, { wallet: WALLET_NAMES[w] })}</a>
-            ))}
-          </div>
-          <p class="demo-note">{c.wallet.mobileNoWallet}</p>
-          <ul class="mobile-installs">
-            {WALLET_IDS.map((w) => <li><a href={WALLET_INSTALL_URLS[w]} rel="noopener noreferrer">{fill(c.wallet.install, { wallet: WALLET_NAMES[w] })}</a></li>)}
-          </ul>
-        </div>
-        <div class="wallet-opts" id="play-wallet-choose">
-          {WALLET_IDS.map((w) => (
-            <div class="wallet-opt">
-              <button type="button" class="btn btn-gold" data-connect={w}>{fill(c.wallet.connectWith, { wallet: WALLET_NAMES[w] })}</button>
-              <p class="demo-note" data-wallet-state={w}></p>
-              <a class="demo-note" data-install={w} href={WALLET_INSTALL_URLS[w]} rel="noopener noreferrer" hidden>{fill(c.wallet.install, { wallet: WALLET_NAMES[w] })}</a>
-            </div>
-          ))}
-        </div>
-        <div id="play-wallet-connected" hidden>
-          <p><strong id="play-wallet-who"></strong></p>
-          <p class="mono-line"><code id="play-wallet-address"></code></p>
-          <dl class="play-dl" aria-label={c.wallet.balances}>
-            <div><dt>{fill(c.wallet.sol, { unit: unitSol })}</dt><dd id="play-bal-sol">...</dd></div>
-            <div><dt>{fill(c.wallet.goshi, { unit: unitGoshi })}</dt><dd id="play-bal-goshi">...</dd></div>
-          </dl>
-          <button type="button" class="btn btn-glass btn-sm" id="play-disconnect">{c.wallet.disconnect}</button>
-        </div>
-        <p id="play-wallet-msg" class="play-msg" role="status" aria-live="polite"></p>
-        <p><a id="play-wallet-help" href="https://docs.phantom.app/developer-powertools/domain-and-transaction-warnings" rel="noopener noreferrer" hidden>{c.wallet.blockedLink}</a></p>
-        {c.wallet.netHelp && <p class="demo-note net-help" id="play-net-help">{fill(c.wallet.netHelp, { network: networkName })}</p>}
-      </section>
 
       <section class="glass play-panel" id="play-pot" aria-labelledby="play-pot-h">
         <h2 id="play-pot-h">{c.pot.h2}</h2>
@@ -307,4 +341,5 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
 <script>
   import "../scripts/play.ts";
   import "../scripts/practice.ts";
+  import "../scripts/skin-current.ts";
 </script>

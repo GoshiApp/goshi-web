@@ -25,6 +25,8 @@ const i18n = JSON.stringify({
     <p class="wallet-pop-title">{w.menu}</p>
     <p class="wallet-pop-name" id="wallet-chip-name"></p>
     <code class="wallet-pop-addr" id="wallet-chip-addr"></code>
+    <a class="btn btn-gold btn-sm" href={path(lang, "profile")}>{w.profile}</a>
+    <a class="btn btn-glass btn-sm" href={path(lang, "profile", "history")}>{w.history}</a>
     <button type="button" class="btn btn-glass btn-sm" id="wallet-chip-disconnect" aria-label={w.disconnectAria}>{w.disconnect}</button>
   </div>
   <span class="sr" role="status" aria-live="polite" id="wallet-chip-live"></span>

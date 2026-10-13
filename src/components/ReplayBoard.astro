@@ -1,0 +1,33 @@
+---
+// The match viewer: plays a match record again in the browser (src/scripts/replay.ts, rules in src/lib/play/arena-sim.ts).
+import { site } from "../site";
+import { copy } from "../content";
+import { path, type Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = copy[lang].replay;
+const api = site.play.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+const data = JSON.stringify({ api, t, verifyHref: path(lang, "verify") });
+---
+<section class="section" id="replay">
+  <div class="wrap">
+    <ul class="replay-how muted">{t.how.map((x) => <li>{x}</li>)}</ul>
+    <form id="replay-form" class="replay-room glass">
+      <label for="replay-room">{t.roomLabel}</label>
+      <input id="replay-room" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" />
+      <button class="btn btn-gold btn-sm" type="submit">{t.load}</button>
+    </form>
+    <p class="muted" id="replay-msg" role="status" aria-live="polite"></p>
+    <div id="replay-host"></div>
+    <details class="glass replay-load" id="replay-drop">
+      <summary>{t.drop}</summary>
+      <label class="btn btn-glass btn-sm">{t.pick}<input type="file" id="replay-file" hidden /></label>
+    </details>
+    <div class="glass ideas-form">
+      <h3>{t.cli}</h3>
+      <p class="muted">{t.cliText}</p>
+    </div>
+    <script type="application/json" id="replay-data" set:html={data}></script>
+  </div>
+</section>
+<script>import "../scripts/replay.ts";</script>

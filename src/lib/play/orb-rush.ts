@@ -12,7 +12,7 @@ import { LEVEL_NAMES, SETTINGS, type QualityManager } from "./arena-quality.ts";
 import type { ArenaSound } from "./arena-sound.ts";
 import { aliveRank, protectionSecondsLeft, viewSpan } from "./arena-view.ts";
 import { phaseKey, zoneDamagePerSecond, zoneStatus, zoneText, type ZoneStrings } from "./arena-zone.ts";
-import { MIN_MASS, START_MASS, speedOf, advance, ahead, effectiveSpeed, extendBodyInto, headingOf, lookAheadSeconds, reconcile, smoothingFactor, type Kin } from "./predict.ts";
+import { MIN_MASS, START_MASS, speedOf, turnRateOf, advance, ahead, effectiveSpeed, extendBodyInto, headingOf, lookAheadSeconds, reconcile, smoothingFactor, type Kin } from "./predict.ts";
 import { classifyDeath, deathLine, type DeathStrings } from "./death.ts";
 import type { PlayerSnap, ServerMsg } from "./protocol.ts";
 
@@ -84,6 +84,8 @@ export interface OrbDeps {
   sound?: ArenaSound;
   /** The color index (0..7) the player picked for its own goshi; null for the default. Read at start and on change. */
   ownColor?: () => number | null;
+  /** The skin id the local player chose (shown at once for you, the others come from the server). */
+  ownSkin?: () => string | null;
   /** Adaptive render quality (and the person's manual choice). */
   quality?: QualityManager;
   /** The diagnostics line template: {fps} {worst} {sps} {jit} {kbs} {ping} {draw} {q}. */
@@ -154,6 +156,8 @@ export class OrbRushArena implements RealtimeArena {
   private boostButton = false;
   /** Spectator camera: follow a player (default: the heaviest) or fly free over the map. */
   private specFree = false;
+  /** After elimination the whole map is shown first; the buttons switch to following a player or to a free camera. */
+  private specMap = true;
   private specTarget: string | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   /** The predicted head of the local player (what is drawn), and the heading the player is steering toward. */
@@ -213,6 +217,7 @@ export class OrbRushArena implements RealtimeArena {
     // The diagnostics line may already be showing (a new match on the same card): keep it going.
     this.observeLongTasks();
     this.painter.setOwnColor(this.deps.ownColor?.() ?? null);
+    this.painter.setSkins({}, this.deps.ownSkin?.() ?? null);
     this.showDiag = !(host.querySelector<HTMLElement>("[data-diag]")?.hidden ?? true);
     this.host.querySelector("[data-diag-toggle]")?.setAttribute("aria-pressed", String(this.showDiag));
     this.resize();
@@ -243,6 +248,10 @@ export class OrbRushArena implements RealtimeArena {
   }
 
   /** Changes the color of the local goshi at once. */
+  setOwnSkin(id: string | null): void {
+    this.painter.setSkins(undefined, id);
+  }
+
   setOwnColor(index: number | null): void {
     this.painter.setOwnColor(index);
   }
@@ -282,6 +291,7 @@ export class OrbRushArena implements RealtimeArena {
     this.shakeAmp = 0;
     this.buf.clear();
     this.dead = false;
+    this.specMap = true;
     this.local = null;
     this.want = null;
     // Real placeholders until the first snapshot: the whole match to go, the start mass, everybody alive.
@@ -290,6 +300,7 @@ export class OrbRushArena implements RealtimeArena {
     this.kills = 0;
     this.finalRank = 0;
     this.alive = Object.keys(msg.roles).length;
+    this.painter.setSkins(msg.skins, this.deps.ownSkin?.() ?? null);
     this.timeLeftMs = msg.matchMs;
     this.cam = { x: msg.zone.cx, y: msg.zone.cy };
     this.camSet = false;
@@ -360,6 +371,7 @@ export class OrbRushArena implements RealtimeArena {
       if (ev.by === this.you && ev.w !== this.you) this.kills++;
       if (ev.w === this.you) {
         this.dead = true;
+        this.specMap = true;
         this.finalRank = ev.rank;
         this.setDeadOverlay({ rank: ev.rank, why: line });
       }
@@ -610,13 +622,53 @@ export class OrbRushArena implements RealtimeArena {
       const r = canvas.getBoundingClientRect();
       return { x: e.clientX - r.left - r.width / 2, y: e.clientY - r.top - r.height / 2 };
     };
-    on<PointerEvent>(canvas, "pointermove", (e) => { this.pointer = rel(e); });
-    on<PointerEvent>(canvas, "pointerdown", (e) => {
+    // Touch: "joystick" (default) steers by how far the finger moved from where it first touched, like the .io games on a phone;
+    // "follow" steers toward the finger from the center of the board. The choice is kept in this browser.
+    const joyEl = this.host?.querySelector<HTMLElement>("[data-joy]");
+    const knob = this.host?.querySelector<HTMLElement>("[data-joy-knob]");
+    const ctrlBtn = this.host?.querySelector<HTMLElement>("[data-ctrl-toggle]");
+    const JOY_R = 64;
+    let joystick = true;
+    try { joystick = localStorage.getItem("goshi-ctrl") !== "follow"; } catch { /* default */ }
+    const paintCtrl = () => { if (ctrlBtn) ctrlBtn.textContent = (joystick ? ctrlBtn.dataset.joyLabel : ctrlBtn.dataset.followLabel) ?? ""; };
+    paintCtrl();
+    if (ctrlBtn) on<MouseEvent>(ctrlBtn, "click", () => {
+      joystick = !joystick;
+      try { localStorage.setItem("goshi-ctrl", joystick ? "joystick" : "follow"); } catch { /* optional */ }
+      paintCtrl();
+    });
+    let origin: { x: number; y: number } | null = null;
+    const hideJoy = () => { origin = null; if (joyEl) joyEl.hidden = true; };
+    const moveJoy = (e: PointerEvent) => {
+      if (!origin) return;
+      let dx = e.clientX - origin.x, dy = e.clientY - origin.y;
+      const len = Math.hypot(dx, dy);
+      this.pointer = { x: dx, y: dy };
+      if (len > JOY_R) { dx = (dx / len) * JOY_R; dy = (dy / len) * JOY_R; }
+      if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    };
+    on<PointerEvent>(canvas, "pointermove", (e) => {
+      if (e.pointerType !== "mouse" && joystick) return moveJoy(e);
       this.pointer = rel(e);
+    });
+    on<PointerEvent>(canvas, "pointerdown", (e) => {
+      // Eliminated: a tap on the map moves the camera to the next player still alive.
+      if (this.dead && !this.specFree && !this.specMap) this.nextSpectateTarget();
+      if (e.pointerType !== "mouse" && joystick) {
+        origin = { x: e.clientX, y: e.clientY };
+        if (joyEl) {
+          const r = canvas.getBoundingClientRect();
+          joyEl.style.left = `${e.clientX - r.left}px`;
+          joyEl.style.top = `${e.clientY - r.top}px`;
+          joyEl.hidden = false;
+        }
+        if (knob) knob.style.transform = "translate(0px, 0px)";
+        this.pointer = { x: 0, y: 0 };
+      } else this.pointer = rel(e);
       canvas.setPointerCapture?.(e.pointerId);
       canvas.focus({ preventScroll: true });
     });
-    const release = (e: PointerEvent) => { if (e.pointerType !== "mouse") this.pointer = null; };
+    const release = (e: PointerEvent) => { if (e.pointerType !== "mouse") { this.pointer = null; hideJoy(); } };
     on<PointerEvent>(canvas, "pointerup", release);
     on<PointerEvent>(canvas, "pointercancel", release);
     on<PointerEvent>(canvas, "pointerleave", (e) => { if (e.pointerType === "mouse") this.pointer = null; });
@@ -643,6 +695,36 @@ export class OrbRushArena implements RealtimeArena {
       if (k === "c") this.toggleSpectateFree();
       else if (k === "n" || k === "tab") { this.nextSpectateTarget(); if (k === "tab") e.preventDefault(); }
     });
+    // The elimination card: collapse it with the minus button, drag it by its title bar.
+    const deadBox = this.host?.querySelector<HTMLElement>("[data-dead]");
+    const deadMin = this.host?.querySelector<HTMLElement>("[data-dead-min]");
+    if (deadBox && deadMin) {
+      on<MouseEvent>(deadMin, "click", () => {
+        const min = deadBox.classList.toggle("min");
+        deadMin.textContent = min ? "+" : "\u2212";
+        deadMin.setAttribute("aria-expanded", String(!min));
+      });
+      const head = deadBox.querySelector<HTMLElement>("[data-dead-drag]");
+      if (head) {
+        on<PointerEvent>(head, "pointerdown", (e) => {
+          if ((e.target as HTMLElement).closest("button")) return;
+          const parent = deadBox.offsetParent as HTMLElement | null;
+          if (!parent) return;
+          const pr = parent.getBoundingClientRect(), br = deadBox.getBoundingClientRect();
+          const dx = e.clientX - br.left, dy = e.clientY - br.top;
+          head.setPointerCapture(e.pointerId);
+          const move = (m: PointerEvent) => {
+            const x = Math.min(Math.max(0, m.clientX - dx - pr.left), pr.width - br.width);
+            const y = Math.min(Math.max(0, m.clientY - dy - pr.top), pr.height - br.height);
+            deadBox.style.inset = "auto"; deadBox.style.left = `${x}px`; deadBox.style.top = `${y}px`;
+          };
+          const up = () => { head.removeEventListener("pointermove", move); head.removeEventListener("pointerup", up); head.removeEventListener("pointercancel", up); };
+          head.addEventListener("pointermove", move); head.addEventListener("pointerup", up); head.addEventListener("pointercancel", up);
+        });
+      }
+    }
+    const specMapBtn = this.host?.querySelector<HTMLElement>("[data-spectate-map]");
+    if (specMapBtn) on<MouseEvent>(specMapBtn, "click", () => { this.specMap = true; this.specFree = false; this.host?.querySelector<HTMLElement>("[data-spectate-free]")?.setAttribute("aria-pressed", "false"); });
     const specFreeBtn = this.host?.querySelector<HTMLElement>("[data-spectate-free]");
     if (specFreeBtn) on<MouseEvent>(specFreeBtn, "click", () => this.toggleSpectateFree());
     const specNextBtn = this.host?.querySelector<HTMLElement>("[data-spectate-next]");
@@ -674,8 +756,7 @@ export class OrbRushArena implements RealtimeArena {
     const diagBtn = this.host?.querySelector<HTMLElement>("[data-diag-toggle]");
     if (diagBtn) on<MouseEvent>(diagBtn, "click", () => this.setDiag(!this.showDiag));
 
-    const boostBtn = this.host?.querySelector<HTMLElement>("[data-boost-button]");
-    if (boostBtn) {
+    for (const boostBtn of Array.from(this.host?.querySelectorAll<HTMLElement>("[data-boost-button]") ?? [])) {
       const set = (v: boolean) => { this.boostButton = v; boostBtn.setAttribute("aria-pressed", String(v)); };
       on<PointerEvent>(boostBtn, "pointerdown", (e) => { e.preventDefault(); this.deps.sound?.play("boost"); set(true); });
       on<PointerEvent>(boostBtn, "pointerup", () => set(false));
@@ -694,6 +775,7 @@ export class OrbRushArena implements RealtimeArena {
 
   private toggleSpectateFree() {
     this.specFree = !this.specFree;
+    if (this.specFree) this.specMap = false;
     const b = this.host?.querySelector<HTMLElement>("[data-spectate-free]");
     b?.setAttribute("aria-pressed", String(this.specFree));
   }
@@ -705,6 +787,7 @@ export class OrbRushArena implements RealtimeArena {
     const i = alive.findIndex((p) => p.w === this.specTarget);
     this.specTarget = alive[(i + 1) % alive.length].w;
     this.specFree = false;
+    this.specMap = false;
     this.host?.querySelector<HTMLElement>("[data-spectate-free]")?.setAttribute("aria-pressed", "false");
   }
 
@@ -713,6 +796,9 @@ export class OrbRushArena implements RealtimeArena {
     if (k) return k;
     if (this.pointer && this.canvas) {
       const r = this.canvas.getBoundingClientRect();
+      // While a joystick is held the vector is relative to its origin and full speed is its radius (64 px).
+      const joy = this.host?.querySelector<HTMLElement>("[data-joy]");
+      if (joy && !joy.hidden) return steerFromPointer(this.pointer.x, this.pointer.y, 192, 192);
       return steerFromPointer(this.pointer.x, this.pointer.y, r.width, r.height);
     }
     return { dx: 0, dy: 0 };
@@ -757,13 +843,22 @@ export class OrbRushArena implements RealtimeArena {
     this.raf = 0;
     if (this.status !== "running" || document.visibilityState === "hidden") return;
     const t0 = performance.now();
-    this.draw(t0);
+    // A frame that throws must never stop the loop: the next frame tries again (a stopped loop leaves a blank board).
+    try {
+      this.draw(t0);
+    } catch (e) {
+      this.drawErrors++;
+      this.lastDrawError = String((e as Error)?.stack ?? e).slice(0, 400);
+      if (this.drawErrors <= 3) console.error("[goshi] draw failed", e);
+    }
     const drawMs = performance.now() - t0;
     this.diag.frame(this.frameGap, drawMs, t0);
     if (this.frameGap > 0) this.rec.frame(t0, this.frameGap, drawMs, this.deps.quality?.level ?? 0);
     this.schedule();
   };
   private frameGap = 0;
+  private drawErrors = 0;
+  private lastDrawError = "";
 
   private stopLoops() {
     if (this.raf) cancelAnimationFrame(this.raf);
@@ -816,11 +911,18 @@ export class OrbRushArena implements RealtimeArena {
       }
       this.camSet = true;
     }
-    const wantSpan = viewSpan(target?.m ?? 20);
+    const fullMap = !meAlive && this.specMap && !this.specFree;
+    if (fullMap) {
+      // The whole arena, centered: nothing is followed, everybody can be seen at once.
+      this.cam.x = this.world.w / 2;
+      this.cam.y = this.world.h / 2;
+      this.camSet = true;
+    }
+    const wantSpan = fullMap ? Math.max(this.world.w, this.world.h) * 1.04 : viewSpan(target?.m ?? 20);
     if (!this.span || this.reduced) this.span = wantSpan;
     else this.span += (wantSpan - this.span) * smoothingFactor(dt, 0.6);
     const scale = Math.min(W, H) / this.span;
-    if (target) {
+    if (target && !fullMap) {
       const [hx, hy] = target.head;
       if (this.reduced || meAlive || !this.camSet) { this.cam.x = hx; this.cam.y = hy; }
       else { const k = smoothingFactor(dt, 0.2); this.cam.x += (hx - this.cam.x) * k; this.cam.y += (hy - this.cam.y) * k; }
@@ -884,7 +986,7 @@ export class OrbRushArena implements RealtimeArena {
     if (!this.local) {
       this.local = { x: ref[0], y: ref[1], h: snapMe.h };
     } else {
-      const moved = advance(this.local, this.want, speed, dt);
+      const moved = advance(this.local, this.want, speed, dt, turnRateOf(snapMe.m));
       this.local = reconcile(moved, ref, dt).kin;
     }
     // Built in reused buffers: the object, the head and the body tuples are the same every frame.
@@ -935,10 +1037,15 @@ export class OrbRushArena implements RealtimeArena {
         z.textContent = zoneText({ line: "calm", seconds: Math.ceil(this.shrinkStartMs / 1000), phase: 0 }, this.deps.strings.zoneLines);
       }
     }
+    // In full screen the numbers bar is out of sight: the time, place and zone ride on the canvas.
+    const fsHud = q("[data-fs-hud]");
+    if (fsHud && this.host?.querySelector(".game-canvas.is-fs")) {
+      fsHud.textContent = [t, q("[data-hud-rank]"), q("[data-hud-zone]")].map((e) => e?.textContent ?? "").filter(Boolean).join("   ");
+    }
     const list = q("[data-hud-scores]");
     const latest = this.buf.latest;
     if (list && latest) {
-      const top = [...latest.players].filter((p) => p.alive).sort((x, y) => y.m - x.m).slice(0, 5);
+      const top = [...latest.players].filter((p) => p.alive).sort((x, y) => y.m - x.m).slice(0, 10);
       list.replaceChildren(
         ...top.map((p) => {
           const li = document.createElement("li");

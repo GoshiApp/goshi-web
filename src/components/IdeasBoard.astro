@@ -1,0 +1,64 @@
+---
+// The community board: a form to propose a game (with screenshots), and the list, sorted by votes, with filters.
+// All the work is in src/scripts/ideas.ts; this file only holds the markup and the words.
+import { site } from "../site";
+import { copy } from "../content";
+import { path, type Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = copy[lang].ideas;
+const api = site.play.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+const data = JSON.stringify({ api, t, tokenHref: path(lang, "token") });
+const statuses = Object.keys(t.status) as (keyof typeof t.status)[];
+---
+<section class="section" id="proponer">
+  <div class="wrap ideas">
+    <div class="glass ideas-gate" id="idea-gate" hidden>
+      <h2>{t.gate.title}</h2>
+      <p id="idea-gate-text" class="muted"></p>
+      <div class="btn-row" id="idea-gate-actions"></div>
+      <p class="idea-msg" id="idea-gate-msg" role="status" aria-live="polite"></p>
+    </div>
+    <form class="glass ideas-form" id="idea-form" novalidate>
+      <h2>{t.formH2}</h2>
+      <p class="muted">{t.formIntro}</p>
+      <label for="idea-title">{t.titleLabel}</label>
+      <input id="idea-title" name="title" type="text" maxlength="80" minlength="4" placeholder={t.titlePh} autocomplete="off" required />
+      <label for="idea-text">{t.textLabel}</label>
+      <textarea id="idea-text" name="text" rows="6" maxlength="1500" minlength="20" placeholder={t.textPh} required></textarea>
+      <label for="idea-files">{t.imagesLabel}</label>
+      <input id="idea-files" name="files" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+      <p class="muted small">{t.imagesHint}</p>
+      <ul class="idea-thumbs" id="idea-thumbs"></ul>
+      <input class="idea-hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" />
+      <p class="idea-msg" id="idea-msg" role="status" aria-live="polite"></p>
+      <button class="btn btn-gold" type="submit" id="idea-submit">{t.submit}</button>
+    </form>
+
+    <div class="ideas-board" id="ideas-board">
+      <div class="section-head">
+        <h2>{t.boardH2}</h2>
+        <p>{t.boardIntro}</p>
+      </div>
+      <div class="ideas-filters">
+        <label>{t.sortLabel}
+          <select id="idea-sort">
+            <option value="top">{t.sortTop}</option>
+            <option value="new">{t.sortNew}</option>
+          </select>
+        </label>
+        <label>{t.statusLabel}
+          <select id="idea-status">
+            <option value="">{t.statusAll}</option>
+            {statuses.map((s) => <option value={s}>{t.status[s]}</option>)}
+          </select>
+        </label>
+        <span class="muted small" id="idea-count"></span>
+      </div>
+      <ul class="idea-list" id="idea-list" aria-live="polite"><li class="muted">{t.loading}</li></ul>
+      <p class="muted small">{t.noteVotes}</p>
+    </div>
+    <script type="application/json" id="ideas-data" set:html={data}></script>
+  </div>
+</section>
+<script>import "../scripts/ideas.ts";</script>

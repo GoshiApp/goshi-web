@@ -1,0 +1,33 @@
+---
+// Every match played, newest first (the global history). The list and the cards are src/scripts/matches.ts and match-card.ts.
+import { site } from "../site";
+import { copy } from "../content";
+import { path, type Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const m = copy[lang].matches;
+const api = site.play.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+const data = JSON.stringify({
+  api, rpc: site.play.rpcUrl ?? "https://api.devnet.solana.com", cluster: site.play.cluster,
+  t: copy[lang].verify, r: copy[lang].replay, m, verifyHref: path(lang, "verify"),
+});
+---
+<section class="section" id="matches">
+  <div class="wrap">
+    <div class="matches-bar">
+      <div class="chips" role="group" aria-label={m.filterLabel} id="matches-filter">
+        <button type="button" class="chip on" data-mode="">{m.filterAll}</button>
+        <button type="button" class="chip" data-mode="royale">{m.modes.royale}</button>
+        <button type="button" class="chip" data-mode="vs">{m.modes.vs}</button>
+        <button type="button" class="chip" data-mode="duel">{m.modes.duel}</button>
+      </div>
+      <button type="button" class="btn btn-glass btn-sm" id="matches-refresh">{m.refresh}</button>
+    </div>
+    <p class="muted" id="matches-msg" role="status" aria-live="polite">{m.loading}</p>
+    <ul class="idea-list" id="matches-list"></ul>
+    <div class="btn-row"><button type="button" class="btn btn-glass" id="matches-more" hidden>{m.loadMore}</button></div>
+    <p class="muted small"><a class="link-btn" href={path(lang, "verify")}>{m.searchLink}</a></p>
+    <script type="application/json" id="matches-data" set:html={data}></script>
+  </div>
+</section>
+<script>import "../scripts/matches.ts";</script>

@@ -2,9 +2,9 @@ import type { RouteKey } from "../lib/i18n";
 import type { ErrorKind } from "../lib/play/errors";
 
 /** Honest status labels. Never "live" without saying where: the contract is on a test network. */
-export type StatusKey = "devnet" | "design" | "idea" | "planned" | "pending" | "demo";
+export type StatusKey = "devnet" | "design" | "idea" | "planned" | "pending" | "demo" | "live";
 
-export interface Item { icon: string; title: string; text: string; status?: StatusKey }
+export interface Item { icon: string; title: string; text: string; status?: StatusKey; href?: string }
 export interface Faq { q: string; a: string[] }
 
 export type Block =
@@ -18,7 +18,7 @@ export type Block =
   | { t: "phases"; id?: string; h2: string; intro?: string; gateLabel: string; items: { name: string; status: StatusKey; text: string; gate?: string }[] }
   | { t: "facts"; id?: string; h2?: string; items: { value: string; label: string }[] }
   | { t: "cta"; h2: string; text: string; primary?: { label: string; to: RouteKey }; secondary?: { label: string; to: RouteKey } }
-  | { t: "component"; name: "calc" | "contact" | "github" | "play"; variant?: "page" }
+  | { t: "component"; name: "calc" | "contact" | "github" | "play" | "ideas" | "gamesHub" | "verify" | "matches" | "replay" | "invite" | "profile"; variant?: "page" }
   | { t: "legal"; tocTitle: string; sections: { id: string; h: string; paras?: string[]; list?: string[] }[] };
 
 export interface Page {
@@ -41,10 +41,10 @@ export interface UI {
   skip: string;
   primaryNavLabel: string;
   walletChip: {
-    connect: string; connectAria: string; connected: string; disconnect: string; disconnectAria: string; menu: string;
+    connect: string; connectAria: string; connected: string; disconnect: string; disconnectAria: string; menu: string; profile: string; history: string;
     announceConnected: string; announceDisconnected: string; network: Record<"devnet" | "testnet" | "mainnet-beta", string>;
   };
-  nav: Record<"games" | "how" | "token" | "security" | "opensource" | "more" | "play" | "roadmap" | "faq" | "risks" | "contribute" | "support", string>;
+  nav: Record<"games" | "ideas" | "verify" | "matches" | "replay" | "invite" | "profile" | "how" | "token" | "security" | "opensource" | "more" | "play" | "roadmap" | "faq" | "risks" | "contribute" | "support", string>;
   menuOpen: string;
   themeToggle: string;
   statuses: Record<StatusKey, string>;
@@ -57,7 +57,7 @@ export interface UI {
   rootDescription: string;
   noindexTitle: string;
   ogAlt: string;
-  ticker: { label: string; online: string; playing: string; matches: string; volume: string; unitReal: string; unitTest: string; prices: string; source: string; offline: string };
+  ticker: { label: string; visits: string; wallets: string; online: string; playing: string; matches: string; volume: string; unitReal: string; unitTest: string; prices: string; source: string; offline: string; maintenance: { soon: string; draining: string; down: string } };
   launch: {
     label: string; endsIn: string; ended: string; days: string; hours: string; minutes: string; seconds: string;
     ca: string; copy: string; copied: string; explorer: string; wallets: string;
@@ -130,7 +130,7 @@ export interface PlayCopy {
   gate: { legend: string; label: string; required: string; network: string; networkRequired: string };
   wallet: {
     h2: string; intro: string; connectWith: string; connecting: string; disconnect: string;
-    detected: string; missing: string; install: string; connectedWith: string; balances: string;
+    detected: string; missing: string; install: string; connectedWith: string; balances: string; showDetails: string; hideDetails: string;
     sol: string; goshi: string; announceConnected: string; announceDisconnected: string;
     mobileH2: string; mobileText: string; openIn: string; mobileNoWallet: string;
     netHelp: string; blockedLink: string;
@@ -138,7 +138,7 @@ export interface PlayCopy {
   rooms: {
     h2: string; intro: string; caption: string; refresh: string; loading: string; empty: string; loadError: string; updated: string;
     states: { waiting: { label: string; help: string }; active: { label: string; help: string } };
-    modes: { royale: string; vs: string };
+    modes: { royale: string; vs: string; duel: string };
     roomName: string; fee: string; pot: string; paid: string; saboteurs: string;
     details: string; detailsAria: string;
     joinPaid: string; joinPaidAria: string; joinFree: string; joinFreeAria: string;
@@ -185,7 +185,9 @@ export interface PlayCopy {
   exact: { insufficientSol: string; notEnoughGoshi: string };
   arena: { badge: string; h2: string; text: string };
   /** The quick match row of the play card and the spend guard. */
+  duel: DuelCopy;
   quick: {
+    topUp: string;
     h2: string; intro: string; about: string; loading: string; unavailable: string; noteTest: string;
     spent: string; limitLabel: string; limitNone: string; limitReached: string; needWallet: string; searching: string;
     found: string; opened: string; failed: string; signin: string; roomGone: string; entering: string; more: string;
@@ -196,6 +198,8 @@ export interface PlayCopy {
     connecting: string; unreachable: string; busy: string; lost: string; failed: string;
     leave: string; resultH2: string; ranking: string; close: string;
     saboteur: string; bot: string;
+    prizePaid: string; prizeHint: string;
+    record: { h: string; what: string; saved: string; hash: string; paid: string; download: string; check: string; ok: string; bad: string; read: string };
     colorLabel: string; colorNames: [string, string, string, string, string, string, string, string];
   };
   /** The live part: the play server, creating rooms, the lobby, the game and the result. */
@@ -209,12 +213,31 @@ export interface PlayCopy {
     /** Proof of playback: re-check a match in the browser. */
     proof: {
       h: string; text: string; button: string; running: string; ok: string; bad: string; unknown: string;
-      steps: Record<"commit" | "seed" | "replay" | "mass" | "chain", string>;
+      steps: Record<"commit" | "seed" | "replay" | "mass" | "arena" | "chain", string>;
+      download: string;
     };
     /** The minute of frenzy that opens every match. */
     frenzy: {
       title: string; mass: string; rank: string; top: string; nitro: string; stun: string; gap: string; carried: string;
-      startsIn: string; spectateFree: string; spectateFollow: string; spectateNext: string;
+      startsIn: string; cap: string; spectateFree: string; spectateFollow: string; spectateNext: string; spectateMap: string;
+    };
+    /** Daily missions. */
+    missions: {
+      h2: string; intro: string; streak: string; best: string; done: string; allDone: string; none: string;
+      text: Record<"games" | "peak" | "kills" | "top3" | "win", string>;
+    };
+    /** The collection of cosmetic skins. */
+    skins: {
+      h2: string; intro: string; quick: string; manage: string; useLabel: string; inUse: string; locked: string; connect: string; verifying: string; balance: string; notHolder: string;
+      rarity: Record<"common" | "rare" | "epic" | "meme" | "holder" | "founder", string>;
+      names: Record<string, string>;
+      unlock: Record<"free" | "games" | "best" | "hold" | "streak" | "founder", string>;
+      unlocked: string;
+    };
+    /** The three step guide shown before the first practice. */
+    tutorial: {
+      open: string; title: string; step: string; next: string; back: string; skip: string; start: string;
+      steps: { h: string; touch: string; desk: string }[];
     };
     /** The waiting room view and the loading state of the arena. */
     arenaState: {
@@ -223,7 +246,7 @@ export interface PlayCopy {
       fill: string; practice: string; practiceAgain: string; hint: string;
     };
     game: {
-      canvasLabel: string; controls: string; boost: string; time: string; mass: string; scores: string; you: string;
+      canvasLabel: string; rotateTitle: string; rotateText: string; rotateStay: string; fullscreen: string; exitFullscreen: string; controls: string; boost: string; ctrlJoystick: string; ctrlFollow: string; time: string; mass: string; scores: string; you: string;
       alive: string; nitro: string; soundOn: string; soundOff: string;
       finalZone: string; nextZone: string; zoneCalm: string; zoneWarn: string; zoneShrink: string; zoneHold: string; zoneOutBanner: string; diagButton: string; diagLine: string; reportButton: string; reportCopied: string; reportManual: string;
       quality: string; qualityAuto: string; qualityHigh: string; qualityMedium: string; qualityLow: string; ping: string; pingValue: string; pingWait: string; rank: string; rankValue: string; playersValue: string; outValue: string; zone: string; protectedHint: string; backToZone: string; saboteurLegend: string; paidLegend: string; botLegend: string;
@@ -248,6 +271,61 @@ export interface PlayCopy {
   };
 }
 
+export interface DuelCopy {
+  h2: string; intro: string; tiersLabel: string; guestsLabel: string; guestPh: string; addGuest: string; create: string; creating: string;
+  needWallet: string; needGuest: string; badGuest: string; signing: string; created: string; shareLabel: string; copy: string; copied: string;
+  share: string; startNow: string; waiting: string; failed: string; incoming: string; accept: string; gone: string; rules: string; full: string;
+  shareText: string; inviteBanner: string; liveH: string; liveNone: string; watch: string; liveLine: string; notInvited: string;
+}
+
+export interface IdeasCopy {
+  boardH2: string; boardIntro: string;
+  formH2: string; formIntro: string;
+  titleLabel: string; titlePh: string; textLabel: string; textPh: string;
+  imagesLabel: string; imagesHint: string; imagesRemove: string;
+  submit: string; sending: string; thanks: string;
+  errors: { short: string; image: string; tooMany: string; network: string; full: string };
+  sortLabel: string; sortTop: string; sortNew: string; statusLabel: string; statusAll: string;
+  status: Record<"open" | "studying" | "planned" | "building" | "live", string>;
+  empty: string; loading: string; offline: string; count: string;
+  gate: { title: string; text: string; connect: string; install: string; signing: string; ok: string; notHolder: string; rpc: string; sessionLost: string; tokenLink: string };
+  up: string; down: string; report: string; reported: string; showImages: string; hideImages: string; noteVotes: string;
+  hub: {
+    h2: string; intro: string;
+    orbTitle: string; orbText: string; orbCta: string;
+    nextTitle: string; nextText: string; nextEmpty: string; nextCta: string;
+    ideasTitle: string; ideasText: string; ideasCta: string;
+  };
+}
+
+export interface VerifyCopy {
+  label: string; placeholder: string; button: string; searching: string; none: string; error: string; hint: string;
+  kinds: Record<"wallet" | "tx" | "room" | "hash", string>;
+  match: string; place: string; entry: string; tx: string; noTx: string; arenaFile: string; yourFile: string; check: string; checking: string;
+  steps: Record<"commit" | "seed" | "replay" | "mass" | "arena" | "chain", string>;
+  ok: string; bad: string; unknown: string; sol: string;
+  watch: string; mine: string; mineNeedWallet: string; howTitle: string; how: string[]; winTitle: string; win: string[];
+}
+
+export interface ReplayCopy {
+  drop: string; pick: string; loading: string; loaded: string; notFound: string; badFile: string; error: string;
+  play: string; pause: string; again: string; speed: string; follow: string; auto: string; fullMap: string; time: string;
+  players: string; winner: string; died: string; alive: string; how: string[]; paint: Record<"you" | "protectedHint" | "backToZone" | "countdown" | "finalZone" | "nextZone" | "nitro" | "mass", string>;
+  verifyLink: string; downloadLink: string; cli: string; cliText: string; roomLabel: string; load: string;
+  viewer: Record<string, string>;
+}
+
+export interface MatchesCopy {
+  filterAll: string; filterLabel: string; modes: Record<"royale" | "vs" | "duel", string>;
+  players: string; winner: string; loadMore: string; loading: string; empty: string; error: string; refresh: string; shown: string; searchLink: string;
+}
+
+export interface InviteCopy {
+  share: { label: string; native: string; copy: string; copied: string; text: string; x: string; telegram: string; whatsapp: string; yourLink: string };
+  connect: string; install: string; signing: string; needWallet: string; linkLabel: string; stats: { referred: string; rooms: string; earned: string };
+  how: string[]; unavailable: string;
+}
+
 export interface Copy {
   ui: UI;
   play: PlayCopy;
@@ -255,6 +333,11 @@ export interface Copy {
   orb: OrbCopy;
   home: Home;
   pages: Record<Exclude<RouteKey, "home">, Page>;
+  ideas: IdeasCopy;
+  verify: VerifyCopy;
+  replay: ReplayCopy;
+  matches: MatchesCopy;
+  invite: InviteCopy;
   contact: { h2: string; support: string; privacy: string; security: string; note: string };
   github: { h2: string; text: string; notYet: string; button: string };
 }

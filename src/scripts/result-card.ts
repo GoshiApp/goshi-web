@@ -1,5 +1,6 @@
 // The top of the result card after a match: your place, mass and eliminations, the prize line, the actions.
 // Shared by the free practice (arena-shell.ts) and the on-chain rooms (play-live.ts). Text always goes in as text.
+import { selectedSkin, skinById } from "../lib/play/skins.ts";
 import { fill, node } from "../lib/play/dom.ts";
 import { COLOR_KEY, GOSHI_HUES, parseColorChoice } from "../lib/play/goshi-face.ts";
 import { dayKey, readDaily, recordMatch, saveDaily, shareText, xIntentUrl } from "../lib/play/quick.ts";
@@ -132,6 +133,8 @@ export function dailyAndShare(i: ShareInput): Node[] {
   let blobPromise: Promise<Blob | null> | null = null;
   const blob = () => (blobPromise ??= renderResultBlob({
     rank: i.rank, of: i.of, mass: i.mass, hue: ownHue(), placeLabel: i.placeLabel, massLabel: i.massLabel, url: i.url.replace(/^https?:\/\//, ""),
+    skin: skinById(selectedSkin())?.style ?? null,
+    footer: d.streak > 1 ? fill(t.streak, { n: d.streak }) : undefined,
   }));
   const share = node("button", { class: "btn btn-gold", text: t.share, attrs: { type: "button" } });
   share.addEventListener("click", async () => {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { decodeServer } from "./protocol.ts";
 
 const frenzy = {
-  startsAt: 1, ms: 60000, tickRate: 20, start: { x: 1200, y: 1200, m: 20 }, carryCap: 90,
+  startsAt: 1, ms: 60000, tickRate: 20, start: { x: 1200, y: 1200, m: 20 }, carryCap: 10000,
   map: { w: 2400, h: 2400, gems: [[1, 10, 20, 0, 1, 0], [2, 30, 40, 5, 8, 1]], walls: [[0, 0, 10, 10]], lasers: [[5, 5, 10, 10, 3]], laserPeriod: 120, laserOn: 60, btcRespawnMs: 15000 },
   snapshot: { hash: "ab", source: "coingecko", at: 1, usd: { SOL: 100 }, mass: { SOL: 1 } },
   commit: "cd", signature: "ef",

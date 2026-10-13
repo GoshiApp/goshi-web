@@ -4,6 +4,7 @@ import { home } from "./home";
 import { games, how, token, security, risks, faq, opensource, contribute, roadmap, support } from "./pages";
 import { privacy, terms } from "./legal";
 import { play, playPage } from "./play";
+import { ideasCopy, ideasPage, verifyCopy, verifyPage, replayCopy, replayPage, matchesCopy, matchesPage, inviteCopy, invitePage, profilePage } from "./ideas";
 
 export const en: Copy = {
   ui,
@@ -11,7 +12,12 @@ export const en: Copy = {
   calc,
   orb,
   home,
-  pages: { games, how, play: playPage, token, security, risks, faq, opensource, contribute, roadmap, support, privacy, terms },
+  pages: { games, ideas: ideasPage, verify: verifyPage, replay: replayPage, matches: matchesPage, invite: invitePage, profile: profilePage, how, play: playPage, token, security, risks, faq, opensource, contribute, roadmap, support, privacy, terms },
+  ideas: ideasCopy,
+  verify: verifyCopy,
+  replay: replayCopy,
+  matches: matchesCopy,
+  invite: inviteCopy,
   contact: {
     h2: "Write to us",
     support: "Questions and feedback",
@@ -21,8 +27,8 @@ export const en: Copy = {
   },
   github: {
     h2: "The code",
-    text: "The contract, the game server and this website are meant to be public on GitHub, so anyone can read and improve them.",
-    notYet: "The GitHub organization is not public yet. TODO(owner): add the link in src/site.ts. It will be announced here when it is.",
+    text: "The contract, the game server and this website are public on GitHub under Apache 2.0, so anyone can read and improve them.",
+    notYet: "The GitHub organization is github.com/GoshiApp.",
     button: "Open the GitHub organization",
   },
 };

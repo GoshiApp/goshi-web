@@ -45,7 +45,24 @@ const toView = (r: RoomAccount): RoomView => ({
   paid: r.paid.map((p) => p.toBase58()),
   free: r.free.map((p) => p.toBase58()),
   passes: r.passes,
+  guests: r.guests.map((g) => g.toBase58()),
 });
+
+/**
+ * The public devnet node answers 429 (too many requests) when a few people play at once. The default client gives up after
+ * a few quick retries; this one waits a little longer, up to about 20 seconds, before the person sees an error.
+ */
+export function patientFetch(base: typeof fetch = (...a) => fetch(...a)): typeof fetch {
+  return async (input, init) => {
+    let wait = 600;
+    for (let i = 0; ; i++) {
+      const res = await base(input, init);
+      if (res.status !== 429 || i >= 5) return res;
+      await new Promise((r) => setTimeout(r, wait + Math.random() * 300));
+      wait = Math.min(wait * 2, 6000);
+    }
+  };
+}
 
 export class PlayClient {
   readonly connection: Connection;
@@ -57,7 +74,7 @@ export class PlayClient {
   private verified: Promise<ChainConfig> | null = null;
 
   constructor(settings: ClientSettings) {
-    this.connection = new Connection(settings.rpcUrl, "confirmed");
+    this.connection = new Connection(settings.rpcUrl, { commitment: "confirmed", disableRetryOnRateLimit: true, fetch: patientFetch() });
     this.programId = new PublicKey(settings.programId);
     this.mint = new PublicKey(settings.goshiMint);
     this.infraWallet = new PublicKey(settings.infraWallet);
@@ -199,6 +216,32 @@ export class PlayClient {
   }
 
   /** Sign with the wallet, send through our RPC, wait for "confirmed". */
+  /**
+   * Signs and sends a transaction that the game server built and signed as the authority (a private duel). The wallet adds the host's
+   * signature. The server's blockhash is fresh, so this has to happen within about a minute.
+   */
+  async sendPrebuilt(base64: string, wallet: Signer, cb: SendCallbacks = {}): Promise<string> {
+    await this.verifyConfig();
+    const tx = Transaction.from(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
+    const lastValidBlockHeight = (await this.connection.getLatestBlockhash("confirmed")).lastValidBlockHeight;
+    let signature: string;
+    try {
+      const signed = await wallet.signTransaction(tx);
+      signature = await this.connection.sendRawTransaction(signed.serialize(), { preflightCommitment: "confirmed" });
+    } catch (e) {
+      throw e instanceof PlayError ? e : new PlayError(classifyError(e), e instanceof Error ? e.message : String(e));
+    }
+    cb.onSubmitted?.(signature);
+    try {
+      await this.waitForConfirmation(signature, lastValidBlockHeight);
+    } catch (e) {
+      if (e instanceof PlayError) throw e;
+      const kind = classifyError(e);
+      throw new PlayError(kind === "unknown" ? "network" : kind, e instanceof Error ? e.message : String(e), signature);
+    }
+    return signature;
+  }
+
   private async send(tx: Transaction, wallet: Signer, cb: SendCallbacks): Promise<string> {
     tx.feePayer = wallet.publicKey;
     // Pre-flight: simulate on OUR network before the wallet is asked to sign. If this fails the problem is the program

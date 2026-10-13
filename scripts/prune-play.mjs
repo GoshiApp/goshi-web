@@ -9,7 +9,10 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
 const site = readFileSync(join(root, "src/site.ts"), "utf8");
-const playBlock = site.slice(site.indexOf("const play: PlayConfig"), site.indexOf("export const site"));
+const isTestTarget = process.env.PUBLIC_TARGET === "test";
+const playBlock = isTestTarget
+  ? site.slice(site.indexOf("const playTest: PlayConfig"), site.indexOf("const isTest"))
+  : site.slice(site.indexOf("const playMain: PlayConfig"), site.indexOf("const playTest: PlayConfig"));
 const enabled = process.env.PUBLIC_PLAY_LOCAL === "1" || /\benabled:\s*true\b/.test(playBlock);
 
 if (enabled) {

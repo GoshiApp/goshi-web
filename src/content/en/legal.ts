@@ -12,7 +12,7 @@ export const privacy: Page = {
       t: "notice",
       tone: "risk",
       title: "Draft for the lawyer",
-      paras: ["TODO(owner): this text must be reviewed and completed by counsel before the site is made public. Items marked TODO(owner) are missing facts or decisions."],
+      paras: ["This policy was reviewed with the project's legal advisor on 2026-10-12 and describes the soft launch. It may change before and after the mainnet launch: check the date. Items still marked TODO(owner) are decisions that are not final yet."],
     },
     {
       t: "legal",
@@ -40,8 +40,8 @@ export const privacy: Page = {
           id: "website",
           h: "3. The website",
           paras: [
-            "The pages load only files from goshi.app. Your choice of dark or light theme, and the name of the last wallet you connected (for example \"phantom\", never an address or a key), are stored in your browser and never sent anywhere. The host that serves the site may keep standard server logs, such as the time of a request and a shortened network address, to keep the service running and secure. TODO(owner): name the host, the log content and the retention period.",
-            "The play page makes requests from your browser to a Solana network node (an RPC provider) and to the game server. The node provider can see your network address and the wallet address that you query. TODO(owner): name the RPC provider and link its policy.",
+            "The pages load only files from goshi.app. Your choice of dark or light theme, and the name of the last wallet you connected (for example \"phantom\", never an address or a key), are stored in your browser and never sent anywhere. To count visitors, your browser keeps a random identifier that is not tied to you and sends it to the game server once per tab. The server turns it into a salted fingerprint that changes at every restart, keeps it only in memory for the day so you are not counted twice, and adds one to a total. It does not store the identifier or any network address and does not follow you between days. Each distinct wallet that connects is also counted once (a wallet address is public data). To keep your browser from being counted, clear this site's data. No cookies. The host that serves the site may keep standard server logs, such as the time of a request and a shortened network address, to keep the service running and secure. The site is served by Firebase Hosting (Google). Google keeps those logs under its own policy.",
+            "The play page makes requests from your browser to a Solana network node (an RPC provider) and to the game server. The node provider can see your network address and the wallet address that you query. On the test network this is the public Solana devnet node. On mainnet it is a paid provider (QuickNode); its own policy applies.",
           ],
         },
         {
@@ -60,7 +60,7 @@ export const privacy: Page = {
             "Your steering inputs and the results of matches you take part in, including the ranking.",
             "Technical data needed to run the service, such as connection times and errors.",
           ],
-          paras: ["TODO(owner): the retention period, where the server is hosted, and whether match results are kept as a public record."],
+          paras: ["Match records (the participants' wallet addresses, the ranking, the closing transaction and the hashes of the moves) are kept indefinitely as a public record that anyone can verify. The site and the game server are hosted on Google Cloud in the United States. Visitor counting keeps nothing beyond the day."],
         },
         {
           id: "use",
@@ -76,7 +76,7 @@ export const privacy: Page = {
           id: "sharing",
           h: "7. Who else sees it",
           paras: [
-            "Service providers that run the site, the game server and the network node. Wallet software you choose, which has its own policy. The Solana Explorer, if you follow a link to it. Authorities, when the law requires it. TODO(owner): list the processors and the countries where data is handled.",
+            "Service providers that run the site, the game server and the network node. Wallet software you choose, which has its own policy. The Solana Explorer, if you follow a link to it. Authorities, when the law requires it. The processors are Google Cloud (hosting of the site and the game server, United States) and a Solana RPC provider (QuickNode on mainnet).",
           ],
         },
         {
@@ -99,7 +99,7 @@ export const privacy: Page = {
         {
           id: "changes",
           h: "11. Changes",
-          paras: ["We will update this page when things change and change its date. TODO(owner): how changes are notified."],
+          paras: ["We will update this page when things change and change its date; for a material change we will also post a notice on the site."],
         },
       ],
     },
@@ -118,7 +118,7 @@ export const terms: Page = {
       t: "notice",
       tone: "risk",
       title: "Draft for the lawyer",
-      paras: ["TODO(owner): these terms must be reviewed and completed by counsel before the site is made public. Nothing here is final."],
+      paras: ["These terms were reviewed with the project's legal advisor on 2026-10-12 and describe the soft launch. They may change before and after the mainnet launch: check the date. Items still marked TODO(owner) are decisions that are not final yet."],
     },
     {
       t: "legal",
@@ -135,7 +135,8 @@ export const terms: Page = {
           list: [
             "You must be at least 18, or the age of majority where you live.",
             "By connecting your wallet and taking part, you confirm on your own responsibility that you are of legal age (18+) and that accessing blockchain games does not break the laws or regulations that apply in your jurisdiction of residence. Goshi does not block countries: following local law is your responsibility.",
-            "You are responsible for knowing whether the law where you live allows games with entry fees and prizes.",
+            "You are responsible for knowing whether the law where you live allows games with entry fees and prizes. The service is not offered to persons or places under sanctions (for example the OFAC lists), and you confirm you are not one of them.",
+            "There is no identity verification in the soft launch phase, which uses small entry amounts. Tax and compliance duties on any prize are yours.",
           ],
         },
         {
@@ -199,7 +200,7 @@ export const terms: Page = {
           id: "disclaimer",
           h: "11. No warranty and limits of liability",
           paras: [
-            "The service is provided as is[[t:, in testing,]] without warranty. The contract [[n:is unaudited and ]]may contain errors. We are not liable for losses from the use of the service, from network or wallet failures, or from decisions you take, to the extent the law allows. TODO(owner): the exact limits for each jurisdiction.",
+            "The service is provided as is[[t:, in testing,]] without warranty. The contract [[n:is unaudited and ]]may contain errors. We are not liable for losses from the use of the service, from network or wallet failures, or from decisions you take, to the extent the law allows. The sanctioned jurisdictions are those on the OFAC lists; other restrictions depend on where you live and are your responsibility.",
           ],
         },
         {

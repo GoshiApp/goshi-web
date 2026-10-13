@@ -25,7 +25,7 @@ test("toRoomView reads BN-like numbers and public keys", () => {
     paid: [{ toBase58: () => "A" }, { toBase58: () => "B" }],
     free: [{ toBase58: () => "S" }],
   });
-  assert.deepEqual(v, { roomId: 7n, entryFee: 250_000_000n, state: "waiting", mode: "royale", paid: ["A", "B"], free: ["S"], passes: 0 });
+  assert.deepEqual(v, { roomId: 7n, entryFee: 250_000_000n, state: "waiting", mode: "royale", paid: ["A", "B"], free: ["S"], passes: 0, guests: [] });
 });
 
 test("the pot is the fee times the paid players (saboteurs add nothing)", () => {

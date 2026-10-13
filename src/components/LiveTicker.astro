@@ -13,17 +13,20 @@ const unit = isMainnet(site.play.cluster) ? t.unitReal : t.unitTest;
 const SYMS = ["SOL", "ETH", "BTC", "DOGE", "AVAX", "BNB"];
 ---
 {on && (
-  <aside class="ticker" aria-label={t.label} data-ticker data-server={site.play.serverUrl} data-offline={t.offline}>
+  <aside class="ticker" aria-label={t.label} data-ticker data-server={site.play.serverUrl} data-offline={t.offline} data-maint-soon={t.maintenance.soon} data-maint-draining={t.maintenance.draining} data-maint-down={t.maintenance.down}>
     <div class="wrap ticker-in">
       <ul class="ticker-prices" aria-label={t.prices}>
         {SYMS.map((s) => <li><b>{s}</b> <span data-price={s}>-</span></li>)}
       </ul>
       <ul class="ticker-stats">
+        <li><span>{t.visits}</span> <b data-stat="visits">-</b></li>
+        <li><span>{t.wallets}</span> <b data-stat="wallets">-</b></li>
         <li><span>{t.online}</span> <b data-stat="online">-</b></li>
         <li><span>{t.playing}</span> <b data-stat="playing">-</b></li>
         <li><span>{t.matches}</span> <b data-stat="matches">-</b></li>
         <li><span>{t.volume}</span> <b data-stat="volume">-</b> <small>{unit}</small></li>
       </ul>
     </div>
+    <p class="maint-bar" data-maint hidden role="status"></p>
   </aside>
 )}

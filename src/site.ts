@@ -22,7 +22,7 @@ function withLocalOverride(base: PlayConfig): PlayConfig {
  * Going to mainnet: see docs/go-mainnet.md. Keep cluster "devnet" until the contract is audited and the lawyer has cleared docs/legal-review.md section 10.
  * The page is noindex while cluster is not "mainnet-beta", whatever `indexable` says.
  */
-const play: PlayConfig = withLocalOverride({
+const playMain: PlayConfig = withLocalOverride({
   enabled: true,
   cluster: "devnet",
   /** TODO(owner): a reliable devnet RPC. The public one is rate limited. Its origin must be in connect-src (see above). */
@@ -46,12 +46,32 @@ const play: PlayConfig = withLocalOverride({
   audited: false,
 });
 
+
+/** The test site: always devnet, with test SOL and bots. Not touched by the mainnet switch. */
+const playTest: PlayConfig = withLocalOverride({
+  enabled: true,
+  cluster: "devnet",
+  rpcUrl: "https://api.devnet.solana.com",
+  programId: "7phmG6f5A7g2GB2xMSV1TzCTDJMLMNf8WsBcwWgC4ggE",
+  goshiMint: "DiAQBixUdJxCNUdY3NyogaBXScgMiCWPeireAtHEHRC8",
+  infraWallet: "JD6zGCtMiwRL6UMuP5a7FN465XDCCuhWzHjU8cQAMQHR",
+  liquidityWallet: "CCQnx7EsybugJQvGj2ky9GBRF2eebXXtVeC8zhAiufkt",
+  serverUrl: "wss://goshi-play-server-suxisoytmq-uc.a.run.app",
+  token: { symbol: "GOSHI", name: "Goshi" },
+  audited: false,
+});
+
+
+/** PUBLIC_TARGET=test builds the practice site (test.goshi.app) on devnet. Without it, the build is the main site. */
+const isTest = import.meta.env.PUBLIC_TARGET === "test";
+const play: PlayConfig = isTest ? playTest : playMain;
+
 export const site = {
   name: "Goshi",
   shortName: "Goshi",
   /** TODO(owner): the final tagline. The copy files carry a working one ("Skill games on Solana, built in the open"). */
-  domain: "goshi.app",
-  url: "https://goshi.app",
+  domain: isTest ? "test.goshi.app" : "goshi.app",
+  url: isTest ? "https://test.goshi.app" : "https://goshi.app",
   /**
    * false: every page carries noindex and robots.txt blocks crawlers. Flip to true
    * only when the legal review (docs/legal-review.md) is done.

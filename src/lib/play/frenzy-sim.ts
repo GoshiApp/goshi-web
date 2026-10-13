@@ -38,8 +38,8 @@ export const FRENZY = {
   laserPenalty: 0.25,
   stunTicks: 20,
   stunSpeed: 0.4,
-  btcRespawnTicks: 300, // 15 seconds
-  carryCap: 90,
+  btcRespawnTicks: 600, // 30 seconds
+  carryCap: 10_000,
   laserPeriod: 120,
   laserOn: 60,
 } as const;

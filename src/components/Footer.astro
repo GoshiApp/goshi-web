@@ -2,13 +2,14 @@
 import { site } from "../site";
 import { copy } from "../content";
 import { path, type Lang, type RouteKey } from "../lib/i18n";
+import ShareBar from "./ShareBar.astro";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const ui = copy[lang].ui;
 const cols: { h: string; keys: RouteKey[] }[] = [
-  { h: ui.footer.play, keys: ["play", "games", "how", "token"] },
-  { h: ui.footer.trust, keys: ["security", "risks", "faq", "roadmap"] },
-  { h: ui.footer.community, keys: ["opensource", "contribute", "support", "privacy", "terms"] },
+  { h: ui.footer.play, keys: ["play", "profile", "games", "ideas", "how", "token"] },
+  { h: ui.footer.trust, keys: ["security", "matches", "verify", "risks", "faq", "roadmap"] },
+  { h: ui.footer.community, keys: ["opensource", "contribute", "replay", "invite", "support", "privacy", "terms"] },
 ];
 const owner = site.legalName || site.name;
 const SOCIAL_LABEL: Record<string, string> = { x: "X", tiktok: "TikTok", telegram: "Telegram", github: "GitHub", instagram: "Instagram", youtube: "YouTube" };
@@ -29,6 +30,7 @@ const socials = Object.entries(site.social).filter(([, v]) => v);
         </nav>
       ))}
     </div>
+    <ShareBar lang={lang} />
     <div class="foot-bottom">
       <p><strong>{ui.footer.testNotice}</strong></p>
       <p>{ui.footer.notFinancial}</p>

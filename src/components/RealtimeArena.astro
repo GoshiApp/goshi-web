@@ -2,6 +2,7 @@
 // The real-time arena card: lobby, the game canvas and the result. All of it is filled by src/scripts/play-live.ts,
 // which loads src/lib/play/orb-rush.ts (an implementation of RealtimeArena, see arena-adapter.ts) only when needed.
 import { copy } from "../content";
+import { site } from "../site";
 import type { Lang } from "../lib/i18n";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
@@ -26,6 +27,44 @@ const l = c.live;
     <div class="btn-row">
       <button type="button" class="btn btn-gold btn-lg" data-lv-fill hidden></button>
       <button type="button" class="btn btn-glass btn-lg" data-lv-practice></button>
+      <button type="button" class="btn btn-glass btn-lg" data-tuto-open>{l.tutorial.open}</button>
+    </div>
+  </div>
+
+  <div class="rotate-gate" data-rotate hidden role="dialog" aria-modal="true" aria-labelledby="rotate-h">
+    <svg viewBox="0 0 64 64" width="72" height="72" aria-hidden="true"><rect x="22" y="8" width="20" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><path d="M12 52c8 6 32 6 40 0M46 46l6 6-8 3" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <h3 id="rotate-h">{l.game.rotateTitle}</h3>
+    <p>{l.game.rotateText}</p>
+    <button type="button" class="link-btn" data-rotate-stay>{l.game.rotateStay}</button>
+  </div>
+
+  <div class="tuto" data-tuto data-start={l.tutorial.start} data-step={l.tutorial.step} hidden role="dialog" aria-modal="true" aria-labelledby="tuto-title">
+    <div class="tuto-card glass">
+      <h3 id="tuto-title">{l.tutorial.title}</h3>
+      <p class="muted small" data-tuto-step></p>
+      <section class="tuto-slide" data-tuto-slide hidden={false}>
+        <span class="tuto-icon"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" stroke-width="3" opacity=".5"/><circle cx="40" cy="26" r="11" fill="currentColor"/><path d="M12 52l12-12" stroke="currentColor" stroke-width="4" stroke-linecap="round" opacity=".5"/></svg></span>
+        <h4>{l.tutorial.steps[0].h}</h4>
+        <p class="touch-only">{l.tutorial.steps[0].touch}</p>
+        <p class="desk-only">{l.tutorial.steps[0].desk}</p>
+      </section>
+      <section class="tuto-slide" data-tuto-slide hidden={true}>
+        <span class="tuto-icon"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M36 6L14 36h16l-4 22 24-32H34z" fill="currentColor"/></svg></span>
+        <h4>{l.tutorial.steps[1].h}</h4>
+        <p class="touch-only">{l.tutorial.steps[1].touch}</p>
+        <p class="desk-only">{l.tutorial.steps[1].desk}</p>
+      </section>
+      <section class="tuto-slide" data-tuto-slide hidden={true}>
+        <span class="tuto-icon"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="6 5"/><circle cx="32" cy="32" r="8" fill="currentColor"/><circle cx="46" cy="20" r="3" fill="currentColor" opacity=".7"/><circle cx="18" cy="42" r="3" fill="currentColor" opacity=".7"/></svg></span>
+        <h4>{l.tutorial.steps[2].h}</h4>
+        <p class="touch-only">{l.tutorial.steps[2].touch}</p>
+        <p class="desk-only">{l.tutorial.steps[2].desk}</p>
+      </section>
+      <div class="btn-row">
+        <button type="button" class="btn btn-glass btn-sm" data-tuto-back>{l.tutorial.back}</button>
+        <button type="button" class="btn btn-gold" data-tuto-next>{l.tutorial.next}</button>
+        <button type="button" class="btn btn-glass btn-sm" data-tuto-skip>{l.tutorial.skip}</button>
+      </div>
     </div>
   </div>
 
@@ -38,6 +77,8 @@ const l = c.live;
       <p><span>{l.game.ping}</span> <b data-hud-ping>-</b></p>
       <p><span>{l.game.zone}</span> <b data-hud-zone>-</b></p>
       <button type="button" class="btn btn-glass btn-sm" data-boost-button aria-pressed="false">{l.game.boost}</button>
+      <button type="button" class="btn btn-glass btn-sm touch-only" data-ctrl-toggle data-joy-label={l.game.ctrlJoystick} data-follow-label={l.game.ctrlFollow}>{l.game.ctrlJoystick}</button>
+      <button type="button" class="btn btn-glass btn-sm" data-fs-toggle data-label-on={l.game.fullscreen} data-label-off={l.game.exitFullscreen} aria-pressed="false">{l.game.fullscreen}</button>
       <button type="button" class="btn btn-glass btn-sm" data-sound-toggle aria-pressed="false">{l.game.soundOff}</button>
       <label class="quality-pick"><span>{l.game.quality}</span>
         <select data-quality>
@@ -55,6 +96,10 @@ const l = c.live;
     <textarea class="game-report" data-report-text hidden readonly rows="9" spellcheck="false" aria-label={l.game.reportButton}></textarea>
     <div class="game-board">
       <div class="game-canvas">
+        <button type="button" class="fs-fab" data-fs-toggle data-label-on={l.game.fullscreen} data-label-off={l.game.exitFullscreen} aria-label={l.game.fullscreen} aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <p class="fs-hud" data-fs-hud aria-hidden="true"></p>
+        <div class="joy" data-joy hidden aria-hidden="true"><span class="joy-knob" data-joy-knob></span></div>
+        <button type="button" class="boost-fab touch-only" data-boost-button aria-label={l.game.boost} aria-pressed="false">{l.game.boost}</button>
         <canvas id="play-canvas" tabindex="0" role="img" aria-label={l.game.canvasLabel}></canvas>
         <p class="zone-banner" data-zone-banner hidden role="status"></p>
         <ul class="kill-feed" data-feed aria-hidden="true"></ul>
@@ -64,11 +109,15 @@ const l = c.live;
           <p class="game-loading-hint">{l.arenaState.hint}</p>
         </div>
         <div class="dead-overlay" data-dead hidden>
-          <h3 data-dead-title></h3>
+          <div class="dead-head" data-dead-drag>
+            <h3 data-dead-title></h3>
+            <button type="button" class="dead-min" data-dead-min aria-expanded="true" aria-label="-">&minus;</button>
+          </div>
           <p data-dead-text></p>
           <p data-dead-by></p>
           <p class="demo-note">{l.game.spectating}</p>
           <div class="btn-row">
+            <button type="button" class="btn btn-glass btn-sm" data-spectate-map>{l.frenzy.spectateMap}</button>
             <button type="button" class="btn btn-glass btn-sm" data-spectate-next>{l.frenzy.spectateNext}</button>
             <button type="button" class="btn btn-glass btn-sm" data-spectate-free aria-pressed="false">{l.frenzy.spectateFree}</button>
           </div>
@@ -76,8 +125,8 @@ const l = c.live;
         </div>
       </div>
       <div class="game-side">
-        <h3>{l.game.scores}</h3>
-        <ol data-hud-scores></ol>
+        <h3 class="sr">{l.game.scores}</h3>
+        <ol class="sr" data-hud-scores></ol>
         <ul class="legend">
           <li><i class="lg-paid"></i>{l.game.paidLegend}</li>
           <li><i class="lg-sab"></i>{l.game.saboteurLegend}</li>

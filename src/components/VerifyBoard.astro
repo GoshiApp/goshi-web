@@ -1,0 +1,33 @@
+---
+// Look a match up by wallet, transaction, room or hash, and check it in the browser. The work is in src/scripts/verify.ts.
+import { site } from "../site";
+import { copy } from "../content";
+import { path } from "../lib/i18n";
+import type { Lang } from "../lib/i18n";
+interface Props { lang: Lang; auto?: boolean }
+const { lang, auto = true } = Astro.props;
+const t = copy[lang].verify;
+const api = site.play.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+const data = JSON.stringify({ api, rpc: site.play.rpcUrl ?? "https://api.devnet.solana.com", cluster: site.play.cluster, t, replayHref: path(lang, "replay"), r: copy[lang].replay, verifyHref: path(lang, "verify") });
+---
+<section class="section" id="verify" data-auto-wallet={auto ? "1" : undefined}>
+  <div class="wrap ideas">
+    <form class="glass ideas-form" id="verify-form" novalidate>
+      <label for="verify-q">{t.label}</label>
+      <input id="verify-q" name="q" type="text" placeholder={t.placeholder} autocomplete="off" spellcheck="false" required />
+      <p class="muted small">{t.hint}</p>
+      <button class="btn btn-gold" type="submit" id="verify-go">{t.button}</button>
+      <button class="btn btn-glass" type="button" id="verify-mine">{t.mine}</button>
+    </form>
+    <div class="glass ideas-form">
+      <h3>{t.howTitle}</h3>
+      <ul>{t.how.map((x) => <li>{x}</li>)}</ul>
+      <h3>{t.winTitle}</h3>
+      <ul>{t.win.map((x) => <li>{x}</li>)}</ul>
+    </div>
+    <p class="muted" id="verify-msg" role="status" aria-live="polite"></p>
+    <ul class="idea-list" id="verify-list"></ul>
+    <script type="application/json" id="verify-data" set:html={data}></script>
+  </div>
+</section>
+<script>import "../scripts/verify.ts";</script>

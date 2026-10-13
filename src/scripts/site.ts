@@ -1,3 +1,6 @@
+import { captureReferral } from "../lib/play/referral.ts";
+
+captureReferral();
 // Small behaviors for every page: mobile menu, the "More" menu and the theme toggle.
 const root = document.documentElement;
 
@@ -38,3 +41,22 @@ document.getElementById("theme-toggle")?.addEventListener("click", () => {
     // Private mode or blocked storage: the choice just lasts for this visit.
   }
 });
+
+// The header and the numbers bar under it stay at the top while scrolling: the bar sticks right below the header, whatever
+// height the header has on this screen.
+{
+  const header = document.querySelector<HTMLElement>(".site-header");
+  const apply = () => {
+    if (header) document.documentElement.style.setProperty("--header-h", `${header.getBoundingClientRect().height}px`);
+  };
+  apply();
+  if (header && typeof ResizeObserver !== "undefined") new ResizeObserver(apply).observe(header);
+  window.addEventListener("resize", apply);
+}
+
+// ?team=1 marks this browser as one of the team's: its visits are never counted. ?team=0 undoes it.
+try {
+  const t = new URLSearchParams(location.search).get("team");
+  if (t === "1") localStorage.setItem("goshi-team", "1");
+  else if (t === "0") localStorage.removeItem("goshi-team");
+} catch { /* private mode */ }

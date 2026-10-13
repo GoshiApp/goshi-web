@@ -11,7 +11,7 @@ const near = (a: number, b: number, eps = 1e-6) => assert.ok(Math.abs(a - b) <= 
 
 test("speed and radius follow the server formulas", () => {
   near(speedOf(0), 135);
-  near(speedOf(300), 67.5);
+  near(speedOf(600), 67.5);
   near(bodyRadius(20), 10 + 1.1 * Math.sqrt(20));
   assert.ok(bodyRadius(20) > 14.9 && bodyRadius(20) < 15.1, "about 15 at the start");
   near(effectiveSpeed(20, true), speedOf(20) * BOOST_SPEED);

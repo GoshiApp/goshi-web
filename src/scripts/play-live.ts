@@ -51,6 +51,12 @@ export interface Live {
   joined(roomId: string): void;
   /** Asks the server for a room with this entry (lamports): the fullest waiting one, or a new one. */
   quick(fee: bigint): Promise<{ roomId: string; created: boolean; paid: number }>;
+  /** Creates a private duel on the server (the creator then takes a seat like in any room). */
+  createDuel(fee: bigint, guests: string[]): Promise<{ roomId: string; tx: string; players: number }>;
+  /** The creator starts a duel before it is full (2 or more seated). */
+  startDuel(roomId: string): void;
+  /** Test network: asks the server for free test SOL and resolves when it arrives (or after a while). */
+  faucet(): Promise<void>;
 }
 
 type Start = Extract<ServerMsg, { t: "start" }>;
@@ -187,6 +193,7 @@ export function createLive(host: LiveHost): Live {
       c.watch(m.roomId);
       void host.refreshRooms();
     });
+    c.on("invite", (m) => { window.dispatchEvent(new CustomEvent("goshi-invite", { detail: m })); });
     c.on("botsJoining", (m) => {
       if (!testNetwork) return;
       setText(createMsg, fill(t.bots.joining, { id: m.roomId, paid: m.paid, free: m.free }));
@@ -385,12 +392,13 @@ export function createLive(host: LiveHost): Live {
       });
       out.replaceChildren(...steps.map((s) => node("li", {
         class: s.ok === true ? "me" : "",
-        text: `${s.ok === true ? "✓" : s.ok === false ? "✗" : "–"} ${pr.steps[s.id]}: ${s.ok === true ? pr.ok : s.ok === false ? pr.bad : pr.unknown}`,
+        text: `${s.ok === true ? "✓" : s.ok === false ? "✗" : "–"} ${pr.steps[s.id]}: ${s.ok === true ? pr.ok : s.ok === false ? pr.bad : pr.unknown}${s.ok !== true && s.detail ? ` (${s.detail})` : ""}`,
       })));
       btn.textContent = pr.button;
       btn.disabled = false;
     });
-    box.append(node("h4", { text: pr.h }), node("p", { class: "play-msg", text: pr.text }), btn, out);
+    const link = node("a", { class: "btn btn-glass btn-sm", text: pr.download, attrs: { href: `${http}/replay/${encodeURIComponent(m.roomId)}/arena`, rel: "noopener noreferrer", download: `goshi-${m.roomId}-arena.bin` } });
+    box.append(node("h4", { text: pr.h }), node("p", { class: "play-msg", text: pr.text }), btn, link, out);
     return box;
   }
 
@@ -489,6 +497,15 @@ export function createLive(host: LiveHost): Live {
 
   function ready(): ServerClient | null {
     if (!client || !client.isReady || !compatible) {
+      // The wallet is connected but this browser has not signed in to the game server yet: the person just clicked an
+      // action, so asking for the one free signature now is expected. Say so instead of "not connected".
+      if (client && compatible && !signinBtn.hidden) {
+        showError(t.server.signinNeeded);
+        signinBtn.hidden = true;
+        signFailedShown = false;
+        client.signIn();
+        return null;
+      }
       showError(t.create.needServer);
       return null;
     }
@@ -563,6 +580,40 @@ export function createLive(host: LiveHost): Live {
     openGame: enter,
     joined(roomId) {
       enter(roomId);
+    },
+    async createDuel(fee, guests) {
+      for (let k = 0; k < 15 && !client; k++) await new Promise((r) => setTimeout(r, 200));
+      return new Promise((resolve, reject) => {
+        const c = client;
+        if (!c) { reject(new Error("server")); return; }
+        const offs: (() => void)[] = [];
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const done = (fn: () => void) => { offs.forEach((o) => o()); if (timer) clearTimeout(timer); fn(); };
+        offs.push(c.on("duelTx", (m) => done(() => resolve({ roomId: m.roomId, tx: m.tx, players: m.players }))));
+        offs.push(c.on("error", (m) => done(() => reject(new Error(serverErr(m))))));
+        offs.push(c.on("signinNeeded", () => done(() => reject(new Error("signin")))));
+        const go = () => { if (!c.createDuel(fee, guests)) done(() => reject(new Error("server"))); };
+        if (c.isReady) go();
+        else {
+          offs.push(c.on("status", ({ status }) => { if (status === "ready") go(); else if (status === "closed") done(() => reject(new Error("server"))); }));
+          timer = setTimeout(() => done(() => reject(new Error("server"))), 20_000);
+        }
+      });
+    },
+    startDuel(roomId) {
+      client?.startDuel(roomId);
+    },
+    faucet() {
+      return new Promise<void>((resolve) => {
+        const c = client;
+        if (!c || !c.isReady || !testNetwork) { resolve(); return; }
+        const offs: (() => void)[] = [];
+        const done = () => { offs.forEach((o) => o()); clearTimeout(timer); resolve(); };
+        const timer = setTimeout(done, 25_000);
+        offs.push(c.on("faucetDone", done));
+        offs.push(c.on("error", done));
+        if (!c.faucet()) done();
+      });
     },
     async quick(fee) {
       // The server connection is created a moment after the wallet connects.

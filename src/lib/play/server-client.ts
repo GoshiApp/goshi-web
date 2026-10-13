@@ -2,6 +2,9 @@
 // Logs in with a wallet message signature, keeps the socket alive with pings, reconnects with backoff,
 // and turns frames into typed events. It holds no game logic: the server simulates, the page draws.
 
+import { selectedSkin } from "./skins.ts";
+import { storedReferral } from "./referral.ts";
+import { visitorId } from "./visitor.ts";
 import {
   authMessage, siwsMessage, backoffMs, bytesToBase58, createRoomMessage, decodeServer, encodeClient, inputMessage, RateLimiter,
   type ClientMsg, type Rules, type ServerMsg,
@@ -54,6 +57,8 @@ export interface ClientEvents {
   /** Every decoded message, including the ones that also have their own event. */
   message: ServerMsg;
   roomCreated: Extract<ServerMsg, { t: "roomCreated" }>;
+  duelTx: Extract<ServerMsg, { t: "duelTx" }>;
+  invite: Extract<ServerMsg, { t: "invite" }>;
   quickRoom: Extract<ServerMsg, { t: "quickRoom" }>;
   passOffer: Extract<ServerMsg, { t: "passOffer" }>;
   passTaken: Extract<ServerMsg, { t: "passTaken" }>;
@@ -297,10 +302,14 @@ export class ServerClient {
         this.usedToken = false;
         this.startPing();
         this.setStatus("ready");
+        this.sendSkin();
+        try { const r = storedReferral(); if (r) this.send({ t: "ref", ref: r }); } catch { /* optional */ }
         this.emit("authed", { wallet: msg.wallet, viaToken: msg.viaToken === true });
         return;
       case "pong": this.rtt.received(this.now()); return;
       case "roomCreated": this.emit("roomCreated", msg); return;
+      case "duelTx": this.emit("duelTx", msg); return;
+      case "invite": this.emit("invite", msg); return;
       case "quickRoom": this.emit("quickRoom", msg); return;
       case "passOffer": this.emit("passOffer", msg); return;
       case "passTaken": this.emit("passTaken", msg); return;
@@ -338,7 +347,7 @@ export class ServerClient {
       this.usedToken = true;
       this.loginSentOn = from;
       this.setStatus("authenticating");
-      this.sendRaw({ t: "auth", token });
+      this.sendRaw({ t: "auth", token, ...(visitorId() ? { vid: visitorId() } : {}) });
       return;
     }
     this.usedToken = false;
@@ -363,7 +372,7 @@ export class ServerClient {
       const sig = await this.signer.signMessage(siws ?? this.helloText);
       if (this.socket !== from) return; // the socket was replaced while the wallet window was open
       this.loginSentOn = from;
-      this.sendRaw({ t: "auth", wallet: this.signer.address, signature: bytesToBase58(sig), ...(siws ? { message: siws } : {}) });
+      this.sendRaw({ t: "auth", wallet: this.signer.address, signature: bytesToBase58(sig), ...(siws ? { message: siws } : {}), ...(visitorId() ? { vid: visitorId() } : {}) });
     } catch (error) {
       // The person closed the wallet window, or the wallet cannot sign. Do not loop on pop-ups.
       this.wantOpen = false;
@@ -389,19 +398,28 @@ export class ServerClient {
   }
 
   /** `entryFee` in lamports. The server only accepts one of its presets. */
-  createRoom(entryFee: bigint): boolean { return this.send(createRoomMessage(entryFee)); }
+  /** Tells the server which cosmetic skin this wallet wears (it is checked there). Cheap: sent at sign in and at every entry. */
+  sendSkin(): void {
+    try {
+      const id = selectedSkin();
+      if (id) this.send({ t: "skin", id });
+    } catch { /* cosmetic only */ }
+  }
+  createRoom(entryFee: bigint): boolean { this.sendSkin(); return this.send(createRoomMessage(entryFee)); }
   /** Takes the pass seat offered in a `passOffer`. Answer: `passTaken` or an error (`no_pass`, `pass_gone`). */
   acceptPass(roomId: string): boolean { return this.send({ t: "acceptPass", roomId }); }
   /** Asks for a room with this entry: the fullest waiting one, or a new one. Answer: `quickRoom`. */
-  quick(entryFee: bigint): boolean { return this.send({ t: "quick", entryFee: entryFee.toString() }); }
+  createDuel(entryFee: bigint, guests: string[]): boolean { return this.send({ t: "createDuel", entryFee: entryFee.toString(), guests }); }
+  startDuel(roomId: string): boolean { return this.send({ t: "startDuel", roomId }); }
+  quick(entryFee: bigint): boolean { this.sendSkin(); return this.send({ t: "quick", entryFee: entryFee.toString() }); }
   fillWithBots(roomId: string, paid: number, free: number): boolean { return this.send({ t: "fillWithBots", roomId, paid, free }); }
   /** Answers a VS offer. */
   vs(roomId: string, accept: boolean): boolean { return this.send({ t: "vs", roomId, accept }); }
   faucet(): boolean { return this.send({ t: "faucet" }); }
   /** Starts a free practice match against bots (no wallet, no money). `name` is cleaned and cut by the server. */
-  practice(name: string): boolean { return this.send({ t: "practice", name }); }
+  practice(name: string, wallet?: string): boolean { return this.send({ t: "practice", name, ...(wallet ? { wallet } : {}) }); }
   watch(roomId: string): boolean { return this.send({ t: "watch", roomId }); }
-  enter(roomId: string): boolean { return this.send({ t: "enter", roomId }); }
+  enter(roomId: string): boolean { this.sendSkin(); return this.send({ t: "enter", roomId }); }
   leave(roomId: string): boolean { return this.send({ t: "leave", roomId }); }
 
   /** Steering. At most 20 per second: extra calls are dropped (the next one carries the latest value). */

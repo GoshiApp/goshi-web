@@ -98,22 +98,67 @@ export function distanceToSnake(p: Pt, head: Pt, body: readonly Pt[]): number {
   return best;
 }
 
-export interface SnakeView { w: string; head: Pt; body: readonly Pt[]; r: number; alive: boolean }
+export interface SnakeView { w: string; head: Pt; body: readonly Pt[]; r: number; alive: boolean; /** Mass, for the head to head rule. */ m?: number; /** Spawn protection: it neither hurts nor can be hurt. */ prot?: boolean }
 
-/** Same as dangerLevel, straight from the snapshot players, without building arrays. `you` is skipped. */
-export function dangerAmong(head: Pt, myRadius: number, snakes: readonly SnakeView[], you: string, protectedNow: boolean): number {
+const levelOf = (d: number, lethal: number, warn: number): number => (d <= lethal ? 1 : d >= warn ? 0 : 1 - (d - lethal) / (warn - lethal));
+
+/**
+ * How close you are to dying, 0 to 1, straight from the snapshot players. `you` is skipped.
+ * The rules of the arena (server/src/game/arena.ts):
+ *  - Head against head decides alone, by weight: the heavier survives, the lighter dies, equal masses both die. So the head
+ *    of a LIGHTER player is not a danger at all: touching it eliminates them.
+ *  - Your head on any other body (from the neck backwards) kills you, whoever is heavier.
+ * With `myMass` and the mass of each snake it follows those rules. Without them, every part of a snake counts as lethal.
+ */
+export function dangerAmong(head: Pt, myRadius: number, snakes: readonly SnakeView[], you: string, protectedNow: boolean, myMass?: number): number {
   if (protectedNow) return 0;
   let level = 0;
   for (let i = 0; i < snakes.length; i++) {
     const s = snakes[i];
     if (!s.alive || s.w === you) continue;
-    const d = distanceToSnake(head, s.head, s.body);
-    const lethal = s.r + 0.35 * myRadius;
-    const warn = s.r + 2 * myRadius;
-    const l = d <= lethal ? 1 : d >= warn ? 0 : 1 - (d - lethal) / (warn - lethal);
+    let l: number;
+    if (myMass === undefined || s.m === undefined) {
+      l = levelOf(distanceToSnake(head, s.head, s.body), s.r + 0.35 * myRadius, s.r + 2 * myRadius);
+    } else {
+      const contact = s.r + myRadius;
+      const dh = Math.hypot(head[0] - s.head[0], head[1] - s.head[1]);
+      const heavier = s.m >= myMass;
+      if (dh < contact) {
+        // Head to head: only the weight counts (the body next to a head does not turn it into an unfair death).
+        l = heavier ? 1 : 0;
+      } else {
+        l = levelOf(distanceToPath(head, s.body), s.r + 0.35 * myRadius, s.r + 2 * myRadius);
+        if (heavier) l = Math.max(l, levelOf(dh, contact, contact + 1.5 * myRadius));
+      }
+    }
     if (l > level) level = l;
   }
   return level;
+}
+
+export interface HeadOn { a: string; b: string; level: number; winner: string | null }
+
+/**
+ * Every pair of heads that are about to touch (0 far, 1 touching) and who the touch favors: the heavier head survives, so it
+ * "benefits" (green) and the lighter one is eliminated (red); with equal masses nobody benefits (both red, `winner` is null).
+ * A protected player neither hurts nor can be hurt, so it is left out. Needs the mass of each snake.
+ */
+export function headOnPairs(snakes: readonly SnakeView[]): HeadOn[] {
+  const out: HeadOn[] = [];
+  for (let i = 0; i < snakes.length; i++) {
+    const a = snakes[i];
+    if (!a.alive || a.prot || a.m === undefined) continue;
+    for (let j = i + 1; j < snakes.length; j++) {
+      const b = snakes[j];
+      if (!b.alive || b.prot || b.m === undefined) continue;
+      const contact = a.r + b.r;
+      const d = Math.hypot(a.head[0] - b.head[0], a.head[1] - b.head[1]);
+      const l = levelOf(d, contact, contact + 2 * Math.max(a.r, b.r));
+      if (l <= 0) continue;
+      out.push({ a: a.w, b: b.w, level: l, winner: a.m > b.m ? a.w : b.m > a.m ? b.w : null });
+    }
+  }
+  return out;
 }
 
 /**

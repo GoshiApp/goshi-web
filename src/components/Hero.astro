@@ -3,6 +3,7 @@ import { copy } from "../content";
 import { site } from "../site";
 import { path, type Lang } from "../lib/i18n";
 import Icon from "./Icon.astro";
+import { arenaScene } from "../lib/scene";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const h = copy[lang].home.hero;
@@ -52,26 +53,7 @@ const quickDefaults = [1, 2.5];
         </ul>
       </div>
       <div class="stage">
-        <svg class="hero-orbs" viewBox="0 0 400 400" role="img" aria-label={h.illustrationAlt}>
-          <circle cx="200" cy="200" r="170" fill="none" stroke="#f2c94c" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="4 10" />
-          <defs><radialGradient id="hero-goshi" cx="38%" cy="30%" r="75%"><stop offset="0" stop-color="#ffe08a" /><stop offset="0.55" stop-color="#f2c94c" /><stop offset="1" stop-color="#e0a92a" /></radialGradient></defs>
-          <path d="M240 270C300 285 330 235 305 180" fill="none" stroke="#f2c94c" stroke-width="26" stroke-linecap="round" />
-          <circle cx="170" cy="215" r="105" fill="url(#hero-goshi)" />
-          <circle cx="132" cy="200" r="30" fill="#ffffff" />
-          <circle cx="208" cy="200" r="30" fill="#ffffff" />
-          <circle cx="138" cy="208" r="16" fill="#0c1334" />
-          <circle cx="214" cy="208" r="16" fill="#0c1334" />
-          <circle cx="144" cy="201" r="6" fill="#ffffff" />
-          <circle cx="220" cy="201" r="6" fill="#ffffff" />
-          <ellipse cx="92" cy="250" rx="18" ry="11" fill="#ff8fa3" opacity="0.75" />
-          <ellipse cx="248" cy="250" rx="18" ry="11" fill="#ff8fa3" opacity="0.75" />
-          <path d="M148 256Q170 280 192 256" fill="none" stroke="#0c1334" stroke-width="7" stroke-linecap="round" />
-          <circle cx="310" cy="105" r="42" fill="#7be3c3" />
-          <circle cx="325" cy="300" r="24" fill="#8ab4ff" />
-          <circle cx="70" cy="95" r="10" fill="#8ab4ff" />
-          <circle cx="60" cy="320" r="8" fill="#7be3c3" />
-          <circle cx="250" cy="355" r="7" fill="#f2c94c" />
-        </svg>
+        <div class="hero-scene" role="img" aria-label={h.illustrationAlt} set:html={arenaScene({ w: 640, h: 480, lang })}></div>
         <div class="float f1" role="note"><b>{h.f1.label}</b>{h.f1.text}</div>
         <div class="float f2" role="note"><b>{h.f2.label}</b>{h.f2.text}</div>
         <div class="float f3" role="note"><b>{h.f3.label}</b>{h.f3.text}</div>

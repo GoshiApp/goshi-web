@@ -9,6 +9,13 @@ import Calculators from "./Calculators.astro";
 import Contact from "./Contact.astro";
 import GithubBlock from "./GithubBlock.astro";
 import PlayBlock from "./PlayBlock.astro";
+import IdeasBoard from "./IdeasBoard.astro";
+import GamesHub from "./GamesHub.astro";
+import VerifyBoard from "./VerifyBoard.astro";
+import ReplayBoard from "./ReplayBoard.astro";
+import MatchesBoard from "./MatchesBoard.astro";
+import InviteBoard from "./InviteBoard.astro";
+import ProfileBoard from "./ProfileBoard.astro";
 
 interface Props { lang: Lang; blocks: Block[] }
 const { lang, blocks } = Astro.props;
@@ -42,7 +49,7 @@ const noticeIcon = { risk: "warn", care: "heart", info: "info" } as const;
               {b.items.map((it) => (
                 <article class="card glass">
                   <span class="icon-chip"><Icon name={it.icon} /></span>
-                  <h3>{it.title}</h3>
+                  <h3>{it.href ? <a href={it.href} rel={it.href.startsWith("http") ? "noopener noreferrer" : undefined}>{it.title}</a> : it.title}</h3>
                   <p set:html={h(it.text)} />
                   {it.status && <Status lang={lang} status={it.status} />}
                 </article>
@@ -166,6 +173,13 @@ const noticeIcon = { risk: "warn", care: "heart", info: "info" } as const;
       if (b.name === "contact") return <Contact lang={lang} />;
       if (b.name === "github") return <GithubBlock lang={lang} />;
       if (b.name === "play") return <PlayBlock lang={lang} />;
+      if (b.name === "ideas") return <IdeasBoard lang={lang} />;
+      if (b.name === "gamesHub") return <GamesHub lang={lang} />;
+      if (b.name === "verify") return <VerifyBoard lang={lang} />;
+      if (b.name === "matches") return <MatchesBoard lang={lang} />;
+      if (b.name === "replay") return <ReplayBoard lang={lang} />;
+      if (b.name === "invite") return <InviteBoard lang={lang} />;
+      if (b.name === "profile") return <ProfileBoard lang={lang} />;
       return null;
     case "legal": {
       const subst = (s: string) => s;

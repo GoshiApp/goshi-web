@@ -11,8 +11,10 @@
 import { FxPool, TIER_COLOR, TIER_SCALE, boostFuel, orbPulse, orbTier, type OrbTier } from "./arena-fx.ts";
 import { SETTINGS, type QualitySettings } from "./arena-quality.ts";
 import { FINAL_PHASE } from "./arena-zone.ts";
+import { skinById } from "./skins.ts";
+import { COINS, coinIndex } from "./coins.ts";
 import { GOSHI_HUES, blinkAmount, dizzyAlpha, hash, moodOf, type Mood } from "./goshi-face.ts";
-import { HEAD_DRAW_SCALE, LabelPlacer, dangerAmong, zoneGuide } from "./arena-view.ts";
+import { HEAD_DRAW_SCALE, LabelPlacer, dangerAmong, headOnPairs, zoneGuide } from "./arena-view.ts";
 import type { Orb, PlayerSnap, ZoneNow } from "./protocol.ts";
 
 export const SABOTEUR_COLOR = "#ff7a4a";
@@ -80,7 +82,7 @@ export interface Frame {
   strings: PaintStrings;
 }
 
-interface Style { idx: number; body: string; glowA: string; glowB: string; head: string; rim: string }
+interface Style { idx: number; body: string; alt?: string; art?: string; glowA: string; glowB: string; head: string; rim: string }
 
 const SPRITE = 64;
 
@@ -102,6 +104,7 @@ export class ArenaPainter {
   private sprites: HTMLCanvasElement[] | null = null;
   private vignette: { w: number; h: number; grad: CanvasGradient } | null = null;
   private dangerGrad: { w: number; h: number; grad: CanvasGradient } | null = null;
+  private chanceGrad: { w: number; h: number; grad: CanvasGradient } | null = null;
   private nitroGrad: { x: number; w: number; grad: CanvasGradient } | null = null;
   private readonly fonts = new Map<number, string>();
   private readonly order: PlayerSnap[] = [];
@@ -123,6 +126,15 @@ export class ArenaPainter {
     this.ownHue = index === null ? null : GOSHI_HUES[index] ?? null;
   }
 
+  private skins: Record<string, string> = {};
+  private ownSkin: string | null = null;
+  /** The skins of the players of this match (from the server), and the local choice, drawn for you before the server confirms. */
+  setSkins(map: Record<string, string> | undefined, own: string | null): void {
+    this.skins = map ?? {};
+    this.ownSkin = own;
+    this.styles.clear();
+  }
+
   /** The goshi that just ate shows a happy mouth for a moment. */
   noteAte(wallet: string, now: number): void {
     this.ateAt.set(wallet, now);
@@ -137,10 +149,14 @@ export class ArenaPainter {
 
   styleFor(p: { w: string; role: string }): Style {
     const own = p.w === this.curYou && this.ownHue !== null && p.role !== "saboteur";
-    const key = p.role === "saboteur" ? `s:${p.w}` : own ? `me:${this.ownHue}` : p.w;
+    const skinId = p.role === "saboteur" ? null : p.w === this.curYou && this.ownSkin ? this.ownSkin : this.skins[p.w] ?? null;
+    const skin = skinById(skinId);
+    const key = p.role === "saboteur" ? `s:${p.w}` : skin ? `k:${skin.id}` : own ? `me:${this.ownHue}` : p.w;
     let s = this.styles.get(key);
     if (s) return s;
-    if (own) {
+    if (skin) {
+      s = { idx: 0, ...skin.style };
+    } else if (own) {
       const h = this.ownHue as number;
       s = {
         idx: 0, body: `hsl(${h} 92% 58%)`, glowA: `hsla(${h} 100% 62% / 0.10)`, glowB: `hsla(${h} 100% 62% / 0.24)`,
@@ -163,6 +179,54 @@ export class ArenaPainter {
   /** Color index for effects of a snake (burst bits, sparkles). */
   effectColor(p: { w: string; role: string }): number {
     return this.styleFor(p).idx;
+  }
+
+  private coins: HTMLCanvasElement[] | null = null;
+  /**
+   * The edible coins of the arena: crypto bubbles with their ticker. Small ones are memes and small caps, medium ones are
+   * the big chains, the richest are BTC and ETH. The color is the coin's usual color and has nothing to do with price moves.
+   */
+  private coinSprites(): HTMLCanvasElement[] {
+    if (this.coins) return this.coins;
+    this.coins = COINS.map(([ticker, a]) => {
+      const c = makeCanvas(SPRITE, SPRITE);
+      const g = c.getContext("2d");
+      if (g) {
+        const h = SPRITE / 2;
+        const halo = g.createRadialGradient(h, h, 0, h, h, h);
+        halo.addColorStop(0, `${a}bb`);
+        halo.addColorStop(0.45, `${a}44`);
+        halo.addColorStop(1, `${a}00`);
+        g.fillStyle = halo;
+        g.fillRect(0, 0, SPRITE, SPRITE);
+        const R = SPRITE * 0.22;
+        const disc = g.createRadialGradient(h - R * 0.3, h - R * 0.4, R * 0.1, h, h, R);
+        disc.addColorStop(0, "#ffffff55");
+        disc.addColorStop(0.35, a);
+        disc.addColorStop(1, "#00000066");
+        g.fillStyle = a;
+        g.beginPath();
+        g.arc(h, h, R, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = disc;
+        g.fill();
+        g.lineWidth = 1.6;
+        g.strokeStyle = "rgba(255,255,255,0.9)";
+        g.stroke();
+        g.fillStyle = "#ffffff";
+        const px = Math.round(Math.min(R * 0.95, (R * 2 * 0.86) / Math.max(2.2, ticker.length * 0.62)));
+        g.font = `800 ${px}px system-ui, sans-serif`;
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.lineJoin = "round";
+        g.strokeStyle = "rgba(0,0,0,0.55)";
+        g.lineWidth = 2;
+        g.strokeText(ticker, h, h + 0.5);
+        g.fillText(ticker, h, h + 0.5);
+      }
+      return c;
+    });
+    return this.coins;
   }
 
   private orbSprites(): HTMLCanvasElement[] {
@@ -225,20 +289,40 @@ export class ArenaPainter {
     this.labelPass(f, order, left, right, top, bottom);
     this.floatLayer(f);
 
-    // Danger: your head is close to another body.
+    // Head to head: the ring of the head that the touch favors (the heavier one) is green, the ring of the one it eliminates is
+    // red (both red when the masses are equal). Danger: your head is close to a body, or to a head that would eliminate you.
     let danger = 0;
+    let chance = 0;
     let me: PlayerSnap | null = null;
     for (let i = 0; i < order.length; i++) if (order[i].w === f.you) { me = order[i]; break; }
-    if (f.meAlive && me) {
-      danger = dangerAmong(me.head, me.r, order, f.you, me.prot);
-      if (danger > 0) {
-        const pulse = f.reduced ? 1 : 0.65 + 0.35 * Math.sin(now / 90);
-        g.strokeStyle = `rgba(255, 70, 70, ${(0.35 + 0.65 * danger) * pulse})`;
-        g.lineWidth = 3.5 / scale;
-        g.beginPath();
-        g.arc(me.head[0], me.head[1], me.r * 1.9, 0, Math.PI * 2);
-        g.stroke();
+    if (f.meAlive && me) danger = dangerAmong(me.head, me.r, order, f.you, me.prot, me.m);
+    if (order.length > 1) {
+      const pulse = f.reduced ? 1 : 0.65 + 0.35 * Math.sin(now / 90);
+      g.lineWidth = 5 / scale;
+      for (const pair of headOnPairs(order)) {
+        for (const w of [pair.a, pair.b]) {
+          const s = order.find((p) => p.w === w);
+          if (!s) continue;
+          const wins = pair.winner === w;
+          // Your own ring is red while anything can eliminate you (below); the other heads follow the rule.
+          if (w === f.you && danger > 0) continue;
+          const rgb = wins ? "70, 255, 140" : "255, 70, 70";
+          g.strokeStyle = `rgba(${rgb}, ${(0.4 + 0.6 * pair.level) * pulse})`;
+          g.beginPath();
+          g.arc(s.head[0], s.head[1], s.r * 1.9, 0, Math.PI * 2);
+          if (!wins) { g.fillStyle = `rgba(${rgb}, ${0.2 * pair.level})`; g.fill(); }
+          g.stroke();
+          if (w === f.you && wins && pair.level > chance) chance = pair.level;
+        }
       }
+    }
+    if (f.meAlive && me && danger > 0) {
+      const pulse = f.reduced ? 1 : 0.65 + 0.35 * Math.sin(now / 90);
+      g.strokeStyle = `rgba(255, 70, 70, ${(0.35 + 0.65 * danger) * pulse})`;
+      g.lineWidth = 3.5 / scale;
+      g.beginPath();
+      g.arc(me.head[0], me.head[1], me.r * 1.9, 0, Math.PI * 2);
+      g.stroke();
     }
 
     // Screen space.
@@ -253,6 +337,19 @@ export class ArenaPainter {
         d = this.dangerGrad = { w: W, h: H, grad };
       }
       g.globalAlpha = danger;
+      g.fillStyle = d.grad;
+      g.fillRect(0, 0, W, H);
+      g.globalAlpha = 1;
+    }
+    if (chance > 0) {
+      let d = this.chanceGrad;
+      if (!d || d.w !== W || d.h !== H) {
+        const grad = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.7);
+        grad.addColorStop(0, "rgba(40,255,120,0)");
+        grad.addColorStop(1, "rgba(40,255,120,0.38)");
+        d = this.chanceGrad = { w: W, h: H, grad };
+      }
+      g.globalAlpha = chance;
       g.fillStyle = d.grad;
       g.fillRect(0, 0, W, H);
       g.globalAlpha = 1;
@@ -290,6 +387,9 @@ export class ArenaPainter {
       this.nitro(f);
     }
     this.minimap(f, order);
+    // Extras: a failure in one of them must never take the whole picture with it.
+    try { this.board(f, order); } catch { /* the board is optional */ }
+    try { this.leaderMark(f, order); } catch { /* so is the leader mark */ }
 
     if (!f.hasState) {
       g.fillStyle = "#ffffff";
@@ -326,6 +426,7 @@ export class ArenaPainter {
   private orbLayer(f: Frame, left: number, right: number, top: number, bottom: number) {
     const { g, scale, now } = f;
     const sprites = this.orbSprites();
+    const coins = this.coinSprites();
     const minR = 2 / scale;
     for (const o of f.orbs.values()) {
       const tier: OrbTier = orbTier(o.v, o.loot === true);
@@ -334,8 +435,65 @@ export class ArenaPainter {
       if (o.x < left - half || o.x > right + half || o.y < top - half || o.y > bottom + half) continue;
       const k = f.reduced ? 1 : orbPulse(now, o.id);
       const h = half * k;
-      g.drawImage(sprites[tier], o.x - h, o.y - h, h * 2, h * 2);
+      if (o.loot === true) g.drawImage(sprites[tier], o.x - h, o.y - h, h * 2, h * 2);
+      // The orbs of this game are coins: small ones SOL, DOGE and AVAX, bigger ones ETH and BNB, the richest BTC.
+      const idx = coinIndex(o.v, o.id);
+      g.drawImage(coins[idx], o.x - h, o.y - h, h * 2, h * 2);
     }
+  }
+
+  /** Simple meme heads drawn in the head circle, facing along the heading (forward is +x after the rotation). */
+  private memeHead(g: CanvasRenderingContext2D, art: string, hx: number, hy: number, r: number, heading: number, happy: boolean) {
+    g.save();
+    g.translate(hx, hy);
+    g.rotate(heading);
+    const disc = (x: number, y: number, rad: number, fill: string) => { g.fillStyle = fill; g.beginPath(); g.arc(x * r, y * r, rad * r, 0, Math.PI * 2); g.fill(); };
+    const tri = (pts: [number, number][], fill: string) => { g.fillStyle = fill; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x * r, y * r) : g.moveTo(x * r, y * r))); g.closePath(); g.fill(); };
+    const eye = (x: number, y: number, big = 0.2) => { disc(x, y, big, "#ffffff"); disc(x + 0.06, y, big * 0.5, "#10142e"); };
+    switch (art) {
+      case "pepe":
+        disc(0.1, -0.5, 0.36, "#86c24a"); disc(0.1, 0.5, 0.36, "#86c24a");
+        eye(0.18, -0.5, 0.26); eye(0.18, 0.5, 0.26);
+        g.strokeStyle = "#7a2a2a"; g.lineWidth = r * 0.12; g.lineCap = "round";
+        g.beginPath(); g.moveTo(0.55 * r, -0.7 * r); g.quadraticCurveTo(0.8 * r, 0, 0.55 * r, 0.7 * r); g.stroke();
+        disc(0.62, 0, 0.12, "#e0707a");
+        break;
+      case "shiba":
+        tri([[-0.5, -0.5], [-0.9, -1.0], [-0.1, -0.85]], "#e89a3c"); tri([[-0.5, 0.5], [-0.9, 1.0], [-0.1, 0.85]], "#e89a3c");
+        disc(0.35, 0, 0.5, "#fff3dc");
+        eye(0.2, -0.38, 0.14); eye(0.2, 0.38, 0.14);
+        disc(0.75, 0, 0.13, "#10142e");
+        break;
+      case "doge":
+        tri([[-0.45, -0.55], [-0.95, -0.9], [-0.15, -0.9]], "#c9a45c"); tri([[-0.45, 0.55], [-0.95, 0.9], [-0.15, 0.9]], "#c9a45c");
+        disc(0.4, 0, 0.5, "#fff6dc");
+        eye(0.22, -0.4, 0.13); eye(0.22, 0.4, 0.13);
+        g.strokeStyle = "#8a6a2a"; g.lineWidth = r * 0.07;
+        g.beginPath(); g.moveTo(0.05 * r, -0.62 * r); g.lineTo(0.35 * r, -0.5 * r); g.moveTo(0.05 * r, 0.62 * r); g.lineTo(0.35 * r, 0.5 * r); g.stroke();
+        disc(0.78, 0, 0.12, "#10142e");
+        break;
+      case "bonk":
+        g.strokeStyle = "#8a5a2b"; g.lineWidth = r * 0.22; g.lineCap = "round";
+        g.beginPath(); g.moveTo(-0.9 * r, 0.9 * r); g.lineTo(0.5 * r, -0.9 * r); g.stroke();
+        tri([[-0.4, -0.5], [-0.8, -0.95], [-0.05, -0.8]], "#e8921c"); tri([[-0.4, 0.5], [-0.8, 0.95], [-0.05, 0.8]], "#e8921c");
+        eye(0.2, -0.38, 0.15); eye(0.2, 0.38, 0.15);
+        disc(0.68, 0, 0.14, "#10142e");
+        break;
+      case "popcat":
+        tri([[-0.2, -0.7], [-0.55, -1.05], [0.15, -0.95]], "#ffd0dc"); tri([[-0.2, 0.7], [-0.55, 1.05], [0.15, 0.95]], "#ffd0dc");
+        disc(0.15, -0.36, 0.1, "#10142e"); disc(0.15, 0.36, 0.1, "#10142e");
+        disc(0.5, 0, happy ? 0.3 : 0.24, "#c2415e");
+        break;
+      case "wif":
+        disc(0.35, 0, 0.5, "#fff0d8");
+        eye(0.22, -0.38, 0.13); eye(0.22, 0.38, 0.13);
+        disc(0.75, 0, 0.12, "#10142e");
+        disc(-0.25, 0, 0.62, "#ff7aa8");
+        g.strokeStyle = "#e0507f"; g.lineWidth = r * 0.1;
+        g.beginPath(); g.arc(-0.25 * r, 0, 0.62 * r, -Math.PI / 2, Math.PI / 2); g.stroke();
+        break;
+    }
+    g.restore();
   }
 
   /** The goshi face on a head: two big eyes looking along the heading, blush, a little mouth. */
@@ -492,6 +650,16 @@ export class ArenaPainter {
     g.lineWidth = 2 * r;
     g.stroke();
     if (q.shadowGlow) { g.shadowBlur = 0; g.shadowColor = "transparent"; }
+    if (st.alt) {
+      // A striped skin: the second color in short dashes over the body.
+      g.lineCap = "butt";
+      g.setLineDash([r * 1.1, r * 1.9]);
+      g.strokeStyle = st.alt;
+      g.lineWidth = 2 * r * 0.88;
+      g.stroke();
+      g.setLineDash(NO_DASH);
+      g.lineCap = "round";
+    }
     if (q.shine) {
       // A soft shine along the middle of the body.
       g.strokeStyle = "rgba(255,255,255,0.22)";
@@ -510,7 +678,9 @@ export class ArenaPainter {
     g.strokeStyle = mine ? "#ffffff" : "rgba(3,5,18,0.7)";
     g.stroke();
     const mood = moodOf(this.ateAt.get(p.w), f.now);
-    this.face(g, hx, hy, hr, p.h, f.reduced ? 0 : blinkAmount(hash(p.w), f.now), mood, scale);
+    if (st.art) {
+      try { this.memeHead(g, st.art, hx, hy, hr, p.h, mood === "happy"); } catch { g.restore(); this.face(g, hx, hy, hr, p.h, 0, mood, scale); }
+    } else this.face(g, hx, hy, hr, p.h, f.reduced ? 0 : blinkAmount(hash(p.w), f.now), mood, scale);
     // Spawn protection: a shield ring.
     if (p.prot) {
       const pulse = f.reduced ? 1 : 0.75 + 0.25 * Math.sin(f.now / 160);
@@ -757,6 +927,84 @@ export class ArenaPainter {
   }
 
   /** A small map in the corner: the world, the safe zone, the other players, you and what the camera shows. */
+  /** Top ten by mass under the minimap, like the .io games: the leader has a crown and you always see your own row. */
+  private board(f: Frame, alive: readonly PlayerSnap[]) {
+    const { g, W, H, dpr } = f;
+    if (alive.length === 0) return;
+    const size = Math.max(84 * dpr, Math.min(150 * dpr, Math.min(W, H) * 0.24));
+    const pad = 10 * dpr;
+    const rowH = 15 * dpr;
+    const wBox = Math.min(size + 30 * dpr, W * 0.4);
+    const x0 = W - wBox - pad;
+    const rows = [...alive].sort((a, b) => b.m - a.m);
+    const top = rows.slice(0, 10);
+    const meIdx = rows.findIndex((p) => p.w === f.you);
+    const extra = meIdx >= 10 ? rows[meIdx] : null;
+    const y0 = pad + size * (f.world.h / Math.max(f.world.w, f.world.h)) + 8 * dpr;
+    const n = top.length + (extra ? 1 : 0);
+    if (y0 + n * rowH + 8 * dpr > H * 0.75) return; // never cover the play area on a very small screen
+    g.globalAlpha = 0.9;
+    g.fillStyle = "rgba(5,8,25,0.6)";
+    roundRect(g, x0, y0, wBox, n * rowH + 8 * dpr, 8 * dpr);
+    g.fill();
+    g.font = this.font(10.5 * dpr);
+    g.textBaseline = "middle";
+    const drawRow = (p: PlayerSnap, rank: number, y: number) => {
+      const mine = p.w === f.you;
+      g.fillStyle = mine ? "#ffe08a" : p.role === "saboteur" ? SABOTEUR_COLOR : "#ffffff";
+      g.textAlign = "left";
+      const name = p.n.length > 11 ? `${p.n.slice(0, 10)}…` : p.n;
+      g.fillText(`${rank === 1 ? "♛" : rank}  ${name}`, x0 + 7 * dpr, y);
+      g.textAlign = "right";
+      g.fillText(String(Math.round(p.m)), x0 + wBox - 7 * dpr, y);
+    };
+    top.forEach((p, i) => drawRow(p, i + 1, y0 + 4 * dpr + (i + 0.5) * rowH));
+    if (extra) drawRow(extra, meIdx + 1, y0 + 4 * dpr + (top.length + 0.5) * rowH);
+    g.globalAlpha = 1;
+  }
+
+  /** A crown over the leader's head, or an arrow with a crown at the screen edge that points to it. */
+  private leaderMark(f: Frame, alive: readonly PlayerSnap[]) {
+    const { g, W, H, dpr, scale } = f;
+    let lead: PlayerSnap | null = null;
+    for (const p of alive) if (!lead || p.m > lead.m) lead = p;
+    if (!lead || lead.w === f.you || !f.meAlive) return;
+    const sx = W / 2 + (lead.head[0] - f.cam.x) * scale;
+    const sy = H / 2 + (lead.head[1] - f.cam.y) * scale;
+    const m = 30 * dpr;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.lineJoin = "round";
+    g.lineWidth = 4 * dpr;
+    g.strokeStyle = "rgba(5,8,25,0.9)";
+    g.fillStyle = "#ffd54a";
+    if (sx > m && sx < W - m && sy > m && sy < H - m) {
+      g.font = this.font(18 * dpr);
+      g.strokeText("♛", sx, sy - 26 * dpr);
+      g.fillText("♛", sx, sy - 26 * dpr);
+      return;
+    }
+    const ang = Math.atan2(sy - H / 2, sx - W / 2);
+    const ex = Math.max(m, Math.min(W - m, sx));
+    const ey = Math.max(m + 120 * dpr * 0, Math.min(H - m, sy));
+    g.save();
+    g.translate(ex, ey);
+    g.globalAlpha = 0.9;
+    g.rotate(ang);
+    g.beginPath();
+    g.moveTo(14 * dpr, 0);
+    g.lineTo(-8 * dpr, -9 * dpr);
+    g.lineTo(-8 * dpr, 9 * dpr);
+    g.closePath();
+    g.fill();
+    g.restore();
+    g.font = this.font(16 * dpr);
+    const cx = ex - Math.cos(ang) * 20 * dpr, cy = ey - Math.sin(ang) * 20 * dpr;
+    g.strokeText("♛", cx, cy);
+    g.fillText("♛", cx, cy);
+    g.globalAlpha = 1;
+  }
+
   private minimap(f: Frame, alive: readonly PlayerSnap[]) {
     const { g, W, H, dpr } = f;
     const size = Math.max(84 * dpr, Math.min(150 * dpr, Math.min(W, H) * 0.24));
@@ -806,6 +1054,8 @@ export class ArenaPainter {
 }
 
 const NO_DASH: number[] = [];
+
+
 const byMass = (a: PlayerSnap, b: PlayerSnap) => a.m - b.m;
 
 function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {

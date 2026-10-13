@@ -4,7 +4,7 @@
 
 export interface WorldSize { w: number; h: number }
 export type Role = "paid" | "saboteur";
-export type Mode = "royale" | "vs";
+export type Mode = "royale" | "vs" | "duel";
 
 export interface Orb { id: number; x: number; y: number; v: number }
 export interface ZoneStart { cx: number; cy: number; r0: number; rMin: number; /** The radius of each phase (start circle, then five). */ radii?: number[] }
@@ -79,7 +79,7 @@ export interface FrenzySnap {
 }
 export interface FrenzyEnd { t: "fend"; roomId: string; mass: number; carried: number; eaten: number; replay: string }
 export interface StatsMsg {
-  t: "stats"; online: number; playing: number; matches: number; volume: string;
+  t: "stats"; online: number; playing: number; visits?: number; wallets?: number; counted?: boolean; maintenance?: { state: string; startsAt: number; blockFrom: number; endsAt: number; message: string } | null; matches: number; volume: string;
   prices: { source: string; at: number; usd: Record<string, number>; mass: Record<string, number> } | null;
   solUsd: number;
 }
@@ -90,9 +90,9 @@ export interface EndProof {
 }
 
 export type ClientMsg =
-  | { t: "auth"; wallet: string; signature: string; /** The Sign In With Solana text that was signed, when the server asked for it. */ message?: string }
+  | { t: "auth"; wallet: string; signature: string; /** The Sign In With Solana text that was signed, when the server asked for it. */ message?: string; vid?: string }
   /** A token from an earlier login: no signature, no wallet popup. */
-  | { t: "auth"; token: string }
+  | { t: "auth"; token: string; vid?: string }
   | { t: "ping" }
   | { t: "createRoom"; entryFee: string }
   /** Find or open a room for this entry (lamports) and take a seat in it with join_room. */
@@ -101,13 +101,20 @@ export type ClientMsg =
   | { t: "acceptPass"; roomId: string }
   | { t: "fillWithBots"; roomId: string; paid: number; free: number }
   | { t: "faucet" }
-  | { t: "practice"; name: string }
+  | { t: "practice"; name: string; wallet?: string }
+  /** The cosmetic skin to wear in paid rooms (a holder skin is checked against the balance). */
+  | { t: "skin"; id: string }
+  /** A private duel for 2 to 5 players: the winner takes the pot minus a small fee. */
+  | { t: "createDuel"; entryFee: string; guests: string[] }
+  | { t: "startDuel"; roomId: string }
+  /** The wallet whose invite link brought this one (first touch, checked by the server). */
+  | { t: "ref"; ref: string }
   | { t: "watch"; roomId: string }
   | { t: "enter"; roomId: string }
   | { t: "vs"; roomId: string; accept: boolean }
   | { t: "input"; dx: number; dy: number; boost: boolean }
   /** Subscribe to (or leave) the live numbers of the landing page. No wallet needed. */
-  | { t: "stats"; on: boolean }
+  | { t: "stats"; on: boolean; /** Counts this page load as one visit (a number only; nothing about the person is stored). */ visit?: boolean }
   | { t: "leave"; roomId: string };
 
 export type ServerMsg =
@@ -120,6 +127,8 @@ export type ServerMsg =
   | { t: "authed"; wallet: string; session?: string; expiresAt?: number; viaToken?: boolean }
   | { t: "pong" }
   | { t: "roomCreated"; roomId: string; tx: string }
+  | { t: "duelTx"; roomId: string; tx: string; players: number; guests: string[] }
+  | { t: "invite"; roomId: string; entryFee: string; host: string; players: number }
   /** The top 3 paid players of a finished room may take the last seat of a higher room that has 9 paid players. */
   | { t: "passOffer"; roomId: string; tierUsd: number; entryFee: string; rank: number; paid: number; expiresInMs: number }
   | { t: "passTaken"; roomId: string; tx: string }
@@ -133,7 +142,7 @@ export type ServerMsg =
   | { t: "vsDeclined"; roomId: string }
   | {
       t: "start"; roomId: string; mode: Mode; startsAt: number; matchMs: number; shrinkStartMs: number; world: WorldSize;
-      zone: ZoneStart; orbs: Orb[]; you: string; roles: Record<string, Role>; practice?: boolean; frenzy?: FrenzyInfo;
+      zone: ZoneStart; orbs: Orb[]; you: string; roles: Record<string, Role>; skins?: Record<string, string>; practice?: boolean; frenzy?: FrenzyInfo;
     }
   | FrenzySnap
   | FrenzyEnd
@@ -142,7 +151,7 @@ export type ServerMsg =
       t: "snap"; roomId: string; tick: number; timeLeftMs: number; zone: ZoneNow; players: PlayerSnap[];
       eatenOrbs: number[]; newOrbs: Orb[]; events: DeathEvent[];
     }
-  | { t: "end"; roomId: string; mode: Mode; ranking: RankEntry[]; payout: EndPayout; tx: string | null; error: string | null; practice?: boolean; proof?: EndProof }
+  | { t: "end"; roomId: string; mode: Mode; ranking: RankEntry[]; payout: EndPayout; tx: string | null; error: string | null; practice?: boolean; prize?: { lamports: string; tx: string }; proof?: EndProof; record?: { hash: string; bytes: number; entries: number } }
   | { t: "error"; code: string; message: string };
 
 export type ServerMsgType = ServerMsg["t"];
@@ -207,7 +216,7 @@ const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFin
 const isUint = (v: unknown): v is string => isStr(v) && /^\d+$/.test(v);
 const isStrArr = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr);
 const isRole = (v: unknown): v is Role => v === "paid" || v === "saboteur";
-const isMode = (v: unknown): v is Mode => v === "royale" || v === "vs";
+const isMode = (v: unknown): v is Mode => v === "royale" || v === "vs" || v === "duel";
 const isPoint = (v: unknown): v is [number, number] => Array.isArray(v) && v.length === 2 && isNum(v[0]) && isNum(v[1]);
 const isOrb = (v: unknown): v is Orb => isObj(v) && isNum(v.id) && isNum(v.x) && isNum(v.y) && isNum(v.v);
 const isPlayer = (v: unknown): v is PlayerSnap =>
@@ -319,6 +328,10 @@ export function decodeServer(raw: unknown): ServerMsg | null {
       return isStr(v.roomId) && typeof v.created === "boolean" && isNum(v.paid)
         ? { t: "quickRoom", roomId: v.roomId, created: v.created, paid: v.paid, ...(isStr(v.tx) ? { tx: v.tx } : {}) }
         : null;
+    case "duelTx":
+      return isStr(v.roomId) && isStr(v.tx) && isNum(v.players) && isStrArr(v.guests) ? { t: "duelTx", roomId: v.roomId, tx: v.tx, players: v.players, guests: v.guests } : null;
+    case "invite":
+      return isStr(v.roomId) && isStr(v.entryFee) && isStr(v.host) && isNum(v.players) ? { t: "invite", roomId: v.roomId, entryFee: v.entryFee, host: v.host, players: v.players } : null;
     case "roomCreated":
       return isStr(v.roomId) && isStr(v.tx) ? { t: "roomCreated", roomId: v.roomId, tx: v.tx } : null;
     case "botsJoining":
@@ -348,6 +361,7 @@ export function decodeServer(raw: unknown): ServerMsg | null {
       return {
         t: "start", roomId: v.roomId, mode: v.mode, startsAt: v.startsAt, matchMs: v.matchMs, shrinkStartMs: v.shrinkStartMs,
         world: { w: w.w, h: w.h }, zone: { cx: z.cx, cy: z.cy, r0: z.r0, rMin: z.rMin, ...(Array.isArray(z.radii) ? { radii: z.radii as number[] } : {}) }, orbs: v.orbs, you: v.you, roles: roles as Record<string, Role>,
+        ...(isObj(v.skins) ? { skins: Object.fromEntries(Object.entries(v.skins).filter(([, x]) => isStr(x)).slice(0, 32)) as Record<string, string> } : {}),
         practice: v.practice === true ? true : undefined,
         ...(v.frenzy !== undefined && parseFrenzy(v.frenzy) ? { frenzy: parseFrenzy(v.frenzy)! } : {}),
       };
@@ -377,7 +391,7 @@ export function decodeServer(raw: unknown): ServerMsg | null {
       if (isObj(p) && isStr(p.source) && isNum(p.at) && isObj(p.usd) && isObj(p.mass)) {
         prices = { source: p.source, at: p.at, usd: p.usd as Record<string, number>, mass: p.mass as Record<string, number> };
       }
-      return { t: "stats", online: v.online, playing: v.playing, matches: v.matches, volume: v.volume, prices, solUsd: isNum(v.solUsd) ? v.solUsd : 0 };
+      return { t: "stats", online: v.online, playing: v.playing, ...(isNum(v.visits) ? { visits: v.visits } : {}), ...(isNum(v.wallets) ? { wallets: v.wallets } : {}), ...(v.counted === true ? { counted: true } : {}), ...(isObj(v.maintenance) && isStr(v.maintenance.state) && isNum(v.maintenance.startsAt) && isNum(v.maintenance.blockFrom) && isNum(v.maintenance.endsAt) ? { maintenance: { state: v.maintenance.state, startsAt: v.maintenance.startsAt, blockFrom: v.maintenance.blockFrom, endsAt: v.maintenance.endsAt, message: isStr(v.maintenance.message) ? v.maintenance.message : "" } } : { maintenance: null }), matches: v.matches, volume: v.volume, prices, solUsd: isNum(v.solUsd) ? v.solUsd : 0 };
     }
     case "snap": {
       if (!isStr(v.roomId) || !isNum(v.tick) || !isNum(v.timeLeftMs) || !Array.isArray(v.players) || !v.players.every(isPlayer)) return null;
@@ -407,6 +421,8 @@ export function decodeServer(raw: unknown): ServerMsg | null {
       return {
         t: "end", roomId: v.roomId, mode: v.mode, ranking: v.ranking as RankEntry[], payout: v.payout, tx: v.tx, error: v.error,
         practice: v.practice === true ? true : undefined,
+        ...(isObj(v.prize) && isStr(v.prize.lamports) && isStr(v.prize.tx) ? { prize: { lamports: v.prize.lamports, tx: v.prize.tx } } : {}),
+        ...(isObj(v.record) && isStr(v.record.hash) && isNum(v.record.bytes) && isNum(v.record.entries) ? { record: { hash: v.record.hash, bytes: v.record.bytes, entries: v.record.entries } } : {}),
         ...(parseProof(v.proof) ? { proof: parseProof(v.proof)! } : {}),
       };
     }

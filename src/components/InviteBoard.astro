@@ -1,0 +1,33 @@
+---
+// The invite page: the person's own link, its numbers and how the credit works. The work is in src/scripts/invite.ts.
+import { site } from "../site";
+import { copy } from "../content";
+import { path, type Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = copy[lang].invite;
+const api = site.play.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+const data = JSON.stringify({ api, t, home: new URL(path(lang, "home"), site.url).toString() });
+---
+<section class="section" id="invite">
+  <div class="wrap ideas">
+    <div class="glass ideas-form" id="invite-box">
+      <p class="muted" id="invite-need">{t.needWallet}</p>
+      <div class="btn-row" id="invite-connect"></div>
+      <div id="invite-mine" hidden>
+        <label for="invite-link">{t.linkLabel}</label>
+        <input id="invite-link" type="text" readonly />
+        <div class="btn-row">
+          <button type="button" class="btn btn-gold btn-sm" id="invite-copy">{t.share.copy}</button>
+        </div>
+        <ul class="kv" id="invite-stats"></ul>
+        <p class="muted small" id="invite-msg" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+    <div class="glass ideas-form">
+      <ol>{t.how.map((h) => <li>{h}</li>)}</ol>
+    </div>
+    <script type="application/json" id="invite-data" set:html={data}></script>
+  </div>
+</section>
+<script>import "../scripts/invite.ts";</script>

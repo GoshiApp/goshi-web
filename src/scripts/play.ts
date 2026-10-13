@@ -31,6 +31,7 @@ interface Data {
   homeHref: string;
   t: {
     quick: PlayCopy["quick"];
+    duel: PlayCopy["duel"];
     wallet: PlayCopy["wallet"];
     rooms: PlayCopy["rooms"];
     pot: { room: string; unavailable: string };
@@ -72,6 +73,8 @@ async function boot(d: Data) {
   // ------------------------------------------------------------------ state
   let clientPromise: Promise<PlayClient> | null = null;
   let rooms: RoomView[] = [];
+  /** The rooms shown in the list: every room except the private duels. */
+  let publicRooms: RoomView[] = [];
   let selected: bigint | null = null;
   let accepted = false;
   let busy = false;
@@ -365,6 +368,17 @@ async function boot(d: Data) {
       }
     }),
   );
+  {
+    const box = $("play-wallet-connected"), btn = $("play-privacy");
+    const apply = (priv: boolean) => { box.dataset.private = priv ? "1" : "0"; btn.textContent = priv ? btn.dataset.show ?? "" : btn.dataset.hide ?? ""; };
+    let priv = true;
+    try { priv = localStorage.getItem("goshi-show-details") !== "1"; } catch { /* default hidden */ }
+    apply(priv);
+    btn.addEventListener("click", () => {
+      priv = !priv; apply(priv);
+      try { localStorage.setItem("goshi-show-details", priv ? "0" : "1"); } catch { /* ignore */ }
+    });
+  }
   $("play-disconnect").addEventListener("click", () => void disconnectWallet());
 
   function onWalletChange(s: WalletState) {
@@ -444,7 +458,7 @@ async function boot(d: Data) {
     const wallet0 = me();
     const minHolder = chain?.minHolder ?? null;
     roomList.replaceChildren(
-      ...rooms.map((r) => {
+      ...publicRooms.map((r) => {
         const id = r.roomId.toString();
         const st = t.rooms.states[r.state];
         const tier = feeOptions.find((o) => o.lamports === r.entryFee);
@@ -522,8 +536,15 @@ async function boot(d: Data) {
       const c = await getClient();
       chain = await c.verifyConfig();
       rooms = await c.listRooms();
+      // Private duels are reached by their link, not from the public list.
+      try {
+        const r = await fetch(`${d.settings.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:")}/duels`);
+        const j = (await r.json()) as { ids: string[] };
+        const hidden = new Set(j.ids);
+        publicRooms = rooms.filter((x) => !hidden.has(x.roomId.toString()));
+      } catch { publicRooms = rooms; }
       firstLoad = false;
-      setText(roomsMsg, rooms.length === 0 ? t.rooms.empty : "");
+      setText(roomsMsg, publicRooms.length === 0 ? t.rooms.empty : "");
       setText(updatedEl, fill(t.rooms.updated, { time: new Date().toLocaleTimeString(d.locale) }));
       if (selected !== null && !rooms.some((r) => r.roomId === selected)) selected = null;
       renderRooms();
@@ -690,8 +711,20 @@ async function boot(d: Data) {
         room = rooms.find((x) => x.roomId.toString() === r.roomId);
       }
       if (!room || room.state !== "waiting") { quickSay(t.quick.roomGone); return; }
+      // On the test network one tap does everything: top up the test SOL when it is short, take the seat and fill the room with bots.
+      if (live.devBots() && wallet.current.status === "connected") {
+        try {
+          const have = await (await getClient()).getSolBalance(wallet.current.publicKey);
+          if (have < room.entryFee + 3_000_000n) { quickSay(t.quick.topUp); await live.faucet(); await refreshBalances(); }
+        } catch { /* the join below reports a missing balance clearly */ }
+      }
       const ok = await onJoin(room.roomId, false);
-      if (ok) { spend.add(room.entryFee); renderSpend(); quickSay(""); }
+      if (ok) {
+        spend.add(room.entryFee);
+        renderSpend();
+        quickSay("");
+        if (live.devBots()) live.fillWithBots(room.roomId.toString());
+      }
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       quickSay(m === "signin" ? t.quick.signin : fill(t.quick.failed, { message: m === "server" ? t.live.create.needServer : m }));
@@ -711,6 +744,7 @@ async function boot(d: Data) {
     if (!info) { setText(quickNote, t.quick.unavailable); return; }
     feeOptions = info.options;
     renderQuickOptions();
+    renderDuelTiers();
     // Arrived from the home page with ?quick=<dollars>: carry on with that entry.
     const q = new URLSearchParams(location.search).get("quick");
     if (q !== null) {
@@ -722,6 +756,185 @@ async function boot(d: Data) {
       if (idx >= 0) void startQuick(idx);
     }
   });
+
+
+  // ------------------------------------------------------------------ duels
+  // A private duel by contract: the host names wallets, signs one transaction (pays the first seat), and only those wallets can sit.
+  const duelMsg = $("play-duel-msg");
+  const duelTiers = $("play-duel-tiers");
+  const duelCreate = $<HTMLButtonElement>("play-duel-create");
+  const duelAdd = $<HTMLButtonElement>("play-duel-add");
+  const duelShare = $("play-duel-share");
+  const duelLink = $<HTMLInputElement>("play-duel-link");
+  const duelStart = $<HTMLButtonElement>("play-duel-start");
+  const duelNative = $<HTMLButtonElement>("play-duel-native");
+  const duelIncoming = $("play-duel-incoming");
+  const duelAccept = $<HTMLButtonElement>("play-duel-accept");
+  const duelInvites = $("play-duel-invites");
+  const duelLive = $("play-duel-live");
+  const guestInputs = Array.from(document.querySelectorAll<HTMLInputElement>(".duel-guest"));
+  let duelTier = 0;
+  let duelBusy = false;
+  const dt = t.duel;
+  const duelSay = (text: string) => setText(duelMsg, text);
+  const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  const short = (a: string) => `${a.slice(0, 4)}...${a.slice(-4)}`;
+
+  function renderDuelTiers() {
+    duelTiers.textContent = "";
+    feeOptions.forEach((o, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = `quick-btn${i === duelTier ? " is-picked" : ""}`;
+      const strong = document.createElement("strong");
+      strong.textContent = `$${o.usd}`;
+      const small = document.createElement("small");
+      small.textContent = `${solText(o.lamports, d.locale)} ${d.unitSol}`;
+      b.append(strong, small);
+      b.addEventListener("click", () => { duelTier = i; renderDuelTiers(); });
+      duelTiers.append(b);
+    });
+  }
+
+  duelAdd.addEventListener("click", () => {
+    const next = guestInputs.find((g) => g.hidden);
+    if (next) { next.hidden = false; next.focus(); }
+    if (!guestInputs.some((g) => g.hidden)) duelAdd.hidden = true;
+  });
+
+  function showDuelLink(id: string, expected: number) {
+    const url = new URL(location.href);
+    url.search = "";
+    url.hash = "";
+    url.searchParams.set("duel", id);
+    duelLink.value = url.toString();
+    duelShare.hidden = false;
+    duelStart.hidden = false;
+    duelStart.onclick = () => { if (live) live.startDuel(id); };
+    if (typeof navigator.share === "function") {
+      duelNative.hidden = false;
+      duelNative.onclick = () => { void navigator.share({ title: "Goshi", text: dt.shareText, url: duelLink.value }).catch(() => undefined); };
+    }
+    duelSay(`${dt.created} ${dt.waiting.replace("{n}", "1").replace("{max}", String(expected))}`);
+  }
+
+  duelCreate.addEventListener("click", async () => {
+    const opt = feeOptions[duelTier];
+    if (!opt || duelBusy || busy) return;
+    if (wallet.current.status !== "connected") {
+      duelSay(dt.needWallet);
+      document.getElementById("play-wallet")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.querySelector<HTMLElement>("[data-connect]")?.focus();
+      return;
+    }
+    const guests = guestInputs.map((g) => g.value.trim()).filter(Boolean);
+    if (guests.length === 0) { duelSay(dt.needGuest); return; }
+    if (guests.some((g) => !BASE58.test(g))) { duelSay(dt.badGuest); return; }
+    if (!gateOk()) return;
+    duelBusy = true;
+    duelSay(dt.creating);
+    try {
+      if (!live) await liveLoading;
+      if (!live) throw new Error("server");
+      const r = await live.createDuel(opt.lamports, guests);
+      duelSay(dt.signing);
+      const client = await getClient();
+      await client.sendPrebuilt(r.tx, wallet.signer, {});
+      spend.add(opt.lamports);
+      renderSpend();
+      showDuelLink(r.roomId, r.players);
+      void refreshRooms();
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      duelSay(dt.failed.replace("{message}", m === "server" ? t.live.create.needServer : errText(classifyError(e)) || m));
+    } finally {
+      duelBusy = false;
+    }
+  });
+
+  duelLink.addEventListener("focus", () => duelLink.select());
+  $("play-duel-copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(duelLink.value); duelSay(dt.copied); } catch { duelLink.select(); }
+  });
+
+  // The invited wallet sees the challenge as soon as it is connected: a banner with the host, the entry and an Accept button.
+  async function acceptDuel(roomId: string) {
+    if (wallet.current.status !== "connected") {
+      duelSay(dt.needWallet);
+      document.getElementById("play-wallet")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.querySelector<HTMLElement>("[data-connect]")?.focus();
+      return;
+    }
+    await refreshRooms();
+    const room = rooms.find((x) => x.roomId.toString() === roomId);
+    if (!room || room.state !== "waiting") { duelSay(dt.gone); return; }
+    if (room.paid.length >= 5) { duelSay(dt.full); return; }
+    const ok = await onJoin(room.roomId, false);
+    if (ok) { spend.add(room.entryFee); renderSpend(); duelSay(""); }
+  }
+  const shownInvites = new Set<string>();
+  window.addEventListener("goshi-invite", (ev) => {
+    const m = (ev as CustomEvent<{ roomId: string; entryFee: string; host: string; players: number }>).detail;
+    if (shownInvites.has(m.roomId)) return;
+    shownInvites.add(m.roomId);
+    duelInvites.hidden = false;
+    const row = document.createElement("div");
+    row.className = "duel-invite";
+    const text = document.createElement("span");
+    text.textContent = dt.inviteBanner.replace("{host}", short(m.host)).replace("{fee}", solText(BigInt(m.entryFee), d.locale)).replace("{unit}", d.unitSol);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-gold btn-sm";
+    btn.textContent = dt.accept;
+    btn.addEventListener("click", () => { void acceptDuel(m.roomId); });
+    row.append(text, btn);
+    duelInvites.append(row);
+  });
+
+  // Arrived through a duel link: show the challenge and the button that takes the seat.
+  const incomingDuel = new URLSearchParams(location.search).get("duel");
+  if (incomingDuel && /^\d{10,24}$/.test(incomingDuel)) {
+    duelIncoming.hidden = false;
+    duelAccept.hidden = false;
+    setText(duelIncoming, dt.incoming.replace("{fee}", "-").replace("{unit}", d.unitSol));
+    void refreshRooms().then(() => {
+      const room = rooms.find((x) => x.roomId.toString() === incomingDuel);
+      if (room && room.state === "waiting") {
+        setText(duelIncoming, dt.incoming.replace("{fee}", solText(room.entryFee, d.locale)).replace("{unit}", d.unitSol) + " " + dt.waiting.replace("{n}", String(room.paid.length)).replace("{max}", String(room.guests.length + 1)));
+      }
+    });
+    duelAccept.addEventListener("click", () => { void acceptDuel(incomingDuel); });
+  }
+
+  // Duels being played now: anyone can watch them.
+  async function refreshLive() {
+    try {
+      const r = await fetch(`${d.settings.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:")}/live`);
+      const j = (await r.json()) as { duels: { roomId: string; entryFee: string; players: string[] }[] };
+      duelLive.textContent = "";
+      if (j.duels.length === 0) {
+        const li = document.createElement("li");
+        li.className = "muted";
+        li.textContent = dt.liveNone;
+        duelLive.append(li);
+        return;
+      }
+      for (const m of j.duels) {
+        const li = document.createElement("li");
+        const label = document.createElement("span");
+        label.textContent = `${dt.liveLine.replace("{a}", short(m.players[0] ?? "")).replace("{b}", m.players.slice(1).map(short).join(", "))} · ${solText(BigInt(m.entryFee), d.locale)} ${d.unitSol}`;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn btn-glass btn-sm";
+        b.textContent = dt.watch;
+        b.addEventListener("click", () => { if (live) live.openGame(m.roomId); });
+        li.append(label, b);
+        duelLive.append(li);
+      }
+    } catch { /* the list is optional */ }
+  }
+  void refreshLive();
+  setInterval(() => { if (document.visibilityState === "visible") void refreshLive(); }, 15_000);
 
   // ------------------------------------------------------------------ start
   // The header chip restores the last connection silently; this page follows the same wallet session.

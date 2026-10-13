@@ -3,7 +3,10 @@
 //  - an on-chain room: the socket of the connected wallet (driven by play-live.ts).
 // It owns the canvas arena (src/lib/play/orb-rush.ts), the loading state (never a blank canvas), the waiting room view
 // and the practice result. Only one match is shown at a time: starting a new one replaces the previous.
+import { SKINS, recordGame, selectedSkin } from "../lib/play/skins.ts";
+import { bestStreak, record as recordMission } from "../lib/play/missions.ts";
 import { registerArena } from "../lib/play/arena-adapter.ts";
+import { manager } from "../lib/play/wallet-session.ts";
 import { fill, node } from "../lib/play/dom.ts";
 import { ArenaSound } from "../lib/play/arena-sound.ts";
 import { QualityManager, type QualityMode } from "../lib/play/arena-quality.ts";
@@ -38,7 +41,7 @@ export interface LobbyView {
   paid: string[];
   free: string[];
   waitedMs: number;
-  mode: "royale" | "vs";
+  mode: "royale" | "vs" | "duel";
   you: string | null;
   /** Show "Fill with test bots" (a test network, and the server allows it). */
   canFill: boolean;
@@ -145,6 +148,99 @@ function createShell(d: ShellData): ArenaShell {
       arena?.setOwnColor(colorIndex);
     });
   });
+  window.addEventListener("goshi-skin-change", () => arena?.setOwnSkin(selectedSkin()));
+  // Overlays that must cover the whole screen live directly under <body>: inside a card with a blur filter a fixed element is
+  // positioned against the card on iPhone, and the rotate message or the tutorial would show as a box inside the page.
+  document.querySelectorAll<HTMLElement>("[data-rotate], [data-tuto]").forEach((el) => document.body.append(el));
+  // Full screen: the canvas with its overlays takes the whole screen. The Fullscreen API where the browser has it (desktop, Android),
+  // and a fixed, full viewport layout where it does not (iPhone Safari). Escape or the button leave it.
+  {
+    const area = q<HTMLElement>(".game-canvas");
+    const toggles = Array.from(document.querySelectorAll<HTMLElement>("[data-fs-toggle]"));
+    if (area && toggles.length > 0) {
+      const on = () => document.fullscreenElement === area || area.classList.contains("is-pseudo-fs");
+      const paint = () => {
+        const v = on();
+        area.classList.toggle("is-fs", v);
+        for (const b of toggles) {
+          b.setAttribute("aria-pressed", String(v));
+          if (b.classList.contains("btn")) b.textContent = (v ? b.dataset.labelOff : b.dataset.labelOn) ?? "";
+          else b.setAttribute("aria-label", (v ? b.dataset.labelOff : b.dataset.labelOn) ?? "");
+        }
+        window.dispatchEvent(new Event("resize"));
+      };
+      const leave = async () => {
+        area.classList.remove("is-pseudo-fs");
+        document.documentElement.classList.remove("has-pseudo-fs");
+        if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch { /* already out */ } }
+        try { (screen.orientation as unknown as { unlock?: () => void })?.unlock?.(); } catch { /* optional */ }
+        paint();
+      };
+      const enter = async () => {
+        let ok = false;
+        if (typeof area.requestFullscreen === "function") {
+          try { await area.requestFullscreen({ navigationUI: "hide" }); ok = true; } catch { ok = false; }
+        }
+        if (!ok) {
+          area.classList.add("is-pseudo-fs");
+          document.documentElement.classList.add("has-pseudo-fs");
+        }
+        // On a phone the game is played sideways: ask for it where the browser allows (it refuses outside full screen).
+        try { await (screen.orientation as unknown as { lock?: (o: string) => Promise<void> })?.lock?.("landscape"); } catch { /* optional */ }
+        paint();
+        q<HTMLElement>("#play-canvas")?.focus({ preventScroll: true });
+      };
+      const toggle = () => void (on() ? leave() : enter());
+      for (const b of toggles) b.addEventListener("click", toggle);
+
+      // On a phone the game is played sideways, like the other .io games: in portrait a match asks to rotate, in landscape the board
+      // takes the whole screen by itself (no gesture is needed for this layout).
+      const coarse = window.matchMedia("(pointer: coarse)");
+      const gate = q<HTMLElement>("[data-rotate]");
+      let stayPortrait = false;
+      let autoFs = false;
+      q<HTMLElement>("[data-rotate-stay]")?.addEventListener("click", () => { stayPortrait = true; syncMobile(); });
+      // Inside a wallet's own browser (Phantom, Solflare) the app is usually locked to portrait: asking to rotate there would trap
+      // the player, so the board takes the screen in portrait instead.
+      const inWalletBrowser = (): boolean => {
+        const w = window as unknown as { phantom?: { solana?: { isPhantom?: boolean } }; solflare?: { isSolflare?: boolean } };
+        return !!(w.phantom?.solana?.isPhantom || w.solflare?.isSolflare) && /iPhone|iPad|Android/i.test(navigator.userAgent);
+      };
+      function syncMobile() {
+        const playing = !gameHost.hidden && resultEl.hidden;
+        const portrait = window.innerHeight > window.innerWidth;
+        const small = Math.min(window.innerWidth, window.innerHeight) < 820;
+        const phone = coarse.matches && small;
+        const wantsGate = phone && playing && portrait && !stayPortrait && !inWalletBrowser() && !document.fullscreenElement;
+        if (gate) gate.hidden = !wantsGate;
+        // The board fills the screen on a phone during a match, sideways or (when allowed or forced) upright.
+        const wantsFs = phone && playing && !wantsGate && !document.fullscreenElement;
+        const isFs = area!.classList.contains("is-pseudo-fs");
+        if (wantsFs && !isFs) {
+          autoFs = true;
+          area!.classList.add("is-pseudo-fs");
+          document.documentElement.classList.add("has-pseudo-fs");
+          paint();
+        } else if (autoFs && isFs && !wantsFs && !document.fullscreenElement) {
+          autoFs = false;
+          area!.classList.remove("is-pseudo-fs");
+          document.documentElement.classList.remove("has-pseudo-fs");
+          paint();
+        }
+        if (!playing) stayPortrait = false;
+      }
+      setInterval(syncMobile, 500);
+      window.addEventListener("orientationchange", syncMobile);
+      window.addEventListener("resize", syncMobile);
+      document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) area.classList.remove("is-pseudo-fs"); paint(); });
+      document.addEventListener("keydown", (e) => {
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (e.key === "Escape" && area.classList.contains("is-pseudo-fs")) void leave();
+        else if ((e.key === "f" || e.key === "F") && !gameHost.hidden && !e.ctrlKey && !e.metaKey && !e.altKey) toggle();
+      });
+    }
+  }
   // Render quality: automatic by default, with a manual choice that is remembered.
   const quality = new QualityManager(store);
   const qualitySel = q<HTMLSelectElement>("[data-quality]");
@@ -190,12 +286,13 @@ function createShell(d: ShellData): ArenaShell {
         format: (n) => String(Math.round(n)),
         sound,
         ownColor: () => colorIndex,
+        ownSkin: () => selectedSkin(),
         quality,
         diagLine: g.diagLine,
       });
       gameHost.hidden = false;
       await a.mount(gameHost, {
-        room: { roomId: 0n, entryFee: 0n, state: "active", mode: "royale", paid: [], free: [], passes: 0 },
+        room: { roomId: 0n, entryFee: 0n, state: "active", mode: "royale", paid: [], free: [], passes: 0, guests: [] },
         me: null, players: [], reducedMotion: reduced, lang: document.documentElement.lang === "es" ? "es" : "en",
       });
       registerArena(a);
@@ -227,7 +324,7 @@ function createShell(d: ShellData): ArenaShell {
       strings: {
         title: live.frenzy.title, mass: live.frenzy.mass, rank: live.frenzy.rank, top: live.frenzy.top, nitro: live.frenzy.nitro,
         stun: live.frenzy.stun, gap: live.frenzy.gap, carried: live.frenzy.carried, you: live.game.you, hint: "", hit: "",
-        startsIn: live.frenzy.startsIn,
+        startsIn: live.frenzy.startsIn, cap: live.frenzy.cap,
       },
     });
     const board = q<HTMLElement>("#realtime-arena-host .game-canvas");
@@ -377,7 +474,53 @@ function createShell(d: ShellData): ArenaShell {
     }
   }
 
+  // The three step guide: shown once, before the first practice. "How to play" opens it again.
+  const TUTO_KEY = "goshi-tutorial-seen";
+  const tutoSeen = (): boolean => { try { return localStorage.getItem(TUTO_KEY) === "1"; } catch { return false; } };
+  function showTutorial(): Promise<boolean> {
+    const root = document.querySelector<HTMLElement>("[data-tuto]");
+    if (!root) return Promise.resolve(true);
+    const slides = Array.from(root.querySelectorAll<HTMLElement>("[data-tuto-slide]"));
+    const stepEl = root.querySelector<HTMLElement>("[data-tuto-step]")!;
+    const back = root.querySelector<HTMLButtonElement>("[data-tuto-back]")!;
+    const next = root.querySelector<HTMLButtonElement>("[data-tuto-next]")!;
+    const skip = root.querySelector<HTMLButtonElement>("[data-tuto-skip]")!;
+    const labelNext = next.textContent ?? "";
+    const labelStart = (root.dataset.start ?? labelNext);
+    let i = 0;
+    const paint = () => {
+      slides.forEach((el, k) => { el.hidden = k !== i; });
+      stepEl.textContent = (root.dataset.step ?? "{n}/{total}").replace("{n}", String(i + 1)).replace("{total}", String(slides.length));
+      back.hidden = i === 0;
+      next.textContent = i === slides.length - 1 ? labelStart : labelNext;
+    };
+    return new Promise((resolve) => {
+      const done = (play: boolean) => {
+        try { localStorage.setItem(TUTO_KEY, "1"); } catch { /* optional */ }
+        root.hidden = true;
+        back.onclick = next.onclick = skip.onclick = null;
+        document.removeEventListener("keydown", onKey);
+        resolve(play);
+      };
+      const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") done(false); };
+      document.addEventListener("keydown", onKey);
+      back.onclick = () => { i = Math.max(0, i - 1); paint(); };
+      next.onclick = () => { if (i < slides.length - 1) { i++; paint(); } else done(true); };
+      skip.onclick = () => done(true);
+      i = 0;
+      paint();
+      root.hidden = false;
+      next.focus();
+    });
+  }
+
+  const connectedAddress = (): string | null => {
+    const w = manager.current;
+    return w.status === "connected" ? w.address : null;
+  };
+
   async function startPractice() {
+    if (!tutoSeen() && !(await showTutorial())) return;
     const { btn, name, msg, leave } = cardEls();
     const clean = name.value.trim().replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 14).trim();
     rememberName(clean);
@@ -408,7 +551,7 @@ function createShell(d: ShellData): ArenaShell {
     pTimeout = setTimeout(() => { if (pClient === c && !pStarted) practiceFail(pc.unreachable); }, CONNECT_TIMEOUT_MS);
     c.on("status", ({ status }) => {
       if (pClient !== c) return;
-      if (status === "ready") c.practice(clean);
+      if (status === "ready") c.practice(clean, connectedAddress() ?? undefined);
       else if (status === "closed" && !pEnded) practiceFail(pStarted ? pc.lost : pc.unreachable);
     });
     c.on("entered", (m) => { pRoom = m.roomId; });
@@ -445,6 +588,18 @@ function createShell(d: ShellData): ArenaShell {
     const nameOf = (w: string) => a?.nameOf(w) ?? w.slice(0, 4);
     const total = m.ranking.length;
     const mine = m.ranking.find((r) => r.w === you);
+    if (mine) {
+      const fresh = recordGame(mine.score);
+      const prevBest = bestStreak();
+      const mm = recordMission({ peak: mine.score, kills: a?.stats?.kills ?? 0, rank: mine.rank, total: m.ranking.length });
+      fresh.push(...SKINS.filter((k) => k.unlock.kind === "streak" && k.unlock.n > prevBest && k.unlock.n <= mm.today.best));
+      window.dispatchEvent(new CustomEvent("goshi-stats-change"));
+      if (fresh.length > 0) {
+        const el = document.querySelector<HTMLElement>("[data-skin-note]");
+        const names = fresh.map((k) => live.skins.names[k.id] ?? k.id).join(", ");
+        if (el) el.textContent = live.skins.unlocked.replace("{name}", names);
+      }
+    }
     const kids: Node[] = [];
     const rt = live.result;
     if (mine) {
@@ -456,6 +611,40 @@ function createShell(d: ShellData): ArenaShell {
         }),
         actions: {},
       }));
+    }
+    if (m.prize) {
+      kids.push(node("p", { class: "result-best new", text: fill(pc.prizePaid, { n: (Number(m.prize.lamports) / 1e9).toLocaleString(undefined, { maximumFractionDigits: 4 }) }) }));
+    } else if (connectedAddress() === null) {
+      kids.push(node("p", { class: "demo-note", text: pc.prizeHint }));
+    }
+    if (m.record) {
+      const rec = m.record;
+      const rr = pc.record;
+      const http = d.settings.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+      const url = `${http}/replay/${encodeURIComponent(m.roomId)}/arena`;
+      const status = node("p", { class: "demo-note", attrs: { role: "status", "aria-live": "polite" } });
+      const check = node("button", { class: "btn btn-glass btn-sm", text: rr.check, attrs: { type: "button" } });
+      check.addEventListener("click", async () => {
+        try {
+          const buf = await (await fetch(url)).arrayBuffer();
+          const dig = await crypto.subtle.digest("SHA-256", buf);
+          const hex = Array.from(new Uint8Array(dig), (x) => x.toString(16).padStart(2, "0")).join("");
+          setText(status, hex === rec.hash ? rr.ok : rr.bad);
+        } catch {
+          setText(status, rr.bad);
+        }
+      });
+      const dl = node("a", { class: "btn btn-glass btn-sm", text: rr.download, attrs: { href: url, rel: "noopener noreferrer", download: `goshi-${m.roomId}-arena.bin` } });
+      kids.push(node("h4", { text: rr.h }));
+      if (mine) {
+        kids.push(node("p", { text: fill(rr.what, { rank: mine.rank, total, mass: Math.round(stats?.mass || mine.score), peak: Math.round(stats?.peak || mine.score), kills: stats?.kills ?? 0 }) }));
+      }
+      kids.push(node("p", { text: fill(rr.saved, { n: rec.entries, kb: Math.max(1, Math.round(rec.bytes / 1024)) }) }));
+      kids.push(node("p", { class: "mono-line", text: `${rr.hash}: ${rec.hash}` }));
+      kids.push(node("p", { class: "demo-note", text: rr.paid }));
+      kids.push(node("p", { class: "demo-note", text: rr.read }));
+      kids.push(node("div", { class: "btn-row" }, [dl, check]));
+      kids.push(status);
     }
     kids.push(node("h4", { text: pc.ranking }));
     kids.push(node("ol", { class: "result-list" }, m.ranking.map((r) => {
@@ -475,8 +664,8 @@ function createShell(d: ShellData): ArenaShell {
     const closeOld = $("play-result-close");
     closeOld.hidden = true;
     resultEl.hidden = false;
+    // The page is never moved at the end of a match: the person may be recording the screen.
     resultEl.focus({ preventScroll: true });
-    resultEl.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "nearest" });
     teardownPractice(false);
   }
 

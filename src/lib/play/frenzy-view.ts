@@ -2,6 +2,8 @@
 // joystick) and keyboard. The game is simulated ONLY on the server; this file shows what the server sends (fsnap) with a
 // small interpolation, and sends the direction and the nitro bit at 20 Hz at most.
 import type { FrenzyInfo, FrenzyEnd, FrenzySnap } from "./protocol.ts";
+import { COINS } from "./coins.ts";
+import { selectedSkin, skinById } from "./skins.ts";
 
 export interface FrenzyStrings {
   title: string;
@@ -16,6 +18,7 @@ export interface FrenzyStrings {
   hint: string;
   hit: string;
   startsIn: string;
+  cap: string;
 }
 
 export interface FrenzyDeps {
@@ -25,8 +28,7 @@ export interface FrenzyDeps {
 }
 
 const SYM = ["SOL", "DOGE", "AVAX", "ETH", "BNB", "BTC"] as const;
-const SYM_LETTER = ["S", "D", "A", "E", "B", "₿"];
-const SYM_COLOR = ["#7be3c3", "#d9b84a", "#e84142", "#8aa4ff", "#f3ba2f", "#f7931a"];
+const SYM_COLOR = SYM.map((t) => COINS.find((c) => c[0] === t)?.[1] ?? "#ffffff");
 
 interface Gem { id: number; x: number; y: number; s: number; m: number; btc: boolean }
 interface Rect { x: number; y: number; w: number; h: number }
@@ -285,41 +287,38 @@ export class FrenzyView {
       if (this.gone.has(q.id)) continue;
       const x = sx(q.x), y = sy(q.y);
       if (x < -margin || y < -margin || x > W + margin || y > H + margin) continue;
-      const r = (q.btc ? 15 : q.m >= 3 ? 11 : 8) * scale;
-      g.fillStyle = SYM_COLOR[q.s] ?? "#fff";
-      g.beginPath();
-      g.arc(x, y, r, 0, Math.PI * 2);
-      g.fill();
-      if (r > 6 * dpr) {
-        g.fillStyle = "#0b1030";
-        g.font = `700 ${Math.round(r * 1.1)}px system-ui, sans-serif`;
-        g.textAlign = "center";
-        g.textBaseline = "middle";
-        g.fillText(SYM_LETTER[q.s] ?? "?", x, y + 1);
-      }
+      // The bubble is drawn about three times wider than the disc so the glow shows: the disc is 0.6 of that.
+      const r = (q.btc ? 26 : q.m >= 3 ? 19 : 15) * scale;
+      const half = r * 1.7;
+      g.drawImage(bubble(q.s), x - half, y - half, half * 2, half * 2);
     }
-    // the goshi
-    const R = 13 * scale;
-    const grad = g.createRadialGradient(W / 2 - R * 0.3, H / 2 - R * 0.3, R * 0.2, W / 2, H / 2, R);
-    grad.addColorStop(0, "#ffe08a");
-    grad.addColorStop(1, this.cur.stun > 0 ? "#ff8fa3" : "#f2c94c");
-    g.fillStyle = grad;
-    g.beginPath();
-    g.arc(W / 2, H / 2, R * (1 + Math.min(0.8, (this.cur.m - 20) / 140)), 0, Math.PI * 2);
-    g.fill();
-    const ER = R * 0.28;
-    g.fillStyle = "#fff";
-    for (const ox of [-0.36, 0.36]) {
-      g.beginPath();
-      g.arc(W / 2 + R * ox, H / 2 - R * 0.1, ER, 0, Math.PI * 2);
-      g.fill();
+    // the goshi: the same head and face as in the arena, in the colors of the chosen skin
+    const R = 15 * scale * (1 + Math.min(0.8, (this.cur.m - 20) / 140));
+    const sk = skinById(selectedSkin())?.style;
+    const hue = 48;
+    const headCol = this.cur.stun > 0 ? "#ffc2cf" : sk?.head ?? `hsl(${hue} 100% 90%)`;
+    const heading = (this.cur.h / 256) * Math.PI * 2;
+    const fx = Math.cos(heading), fy = Math.sin(heading), qx = -fy, qy = fx;
+    const cx = W / 2, cy = H / 2;
+    g.fillStyle = `${sk?.glowB ?? `hsla(${hue} 100% 62% / 0.28)`}`;
+    g.beginPath(); g.arc(cx, cy, R * 1.9, 0, Math.PI * 2); g.fill();
+    g.fillStyle = sk?.body ?? `hsl(${hue} 92% 58%)`;
+    g.beginPath(); g.arc(cx - fx * R * 0.9, cy - fy * R * 0.9, R * 0.9, 0, Math.PI * 2); g.fill();
+    g.fillStyle = headCol;
+    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+    g.lineWidth = Math.max(2, 3 * dpr);
+    g.strokeStyle = "#fff";
+    g.stroke();
+    g.fillStyle = "rgba(255,120,150,0.55)";
+    for (const side of [-1, 1]) { g.beginPath(); g.arc(cx - fx * R * 0.05 + qx * R * 0.72 * side, cy - fy * R * 0.05 + qy * R * 0.72 * side, R * 0.16, 0, Math.PI * 2); g.fill(); }
+    for (const side of [-1, 1]) {
+      const ex = cx + fx * R * 0.25 + qx * R * 0.42 * side, ey = cy + fy * R * 0.25 + qy * R * 0.42 * side;
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(ex, ey, R * 0.32, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#0b1130"; g.beginPath(); g.arc(ex + fx * R * 0.12, ey + fy * R * 0.12, R * 0.17, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(ex + fx * R * 0.17 - qx * R * 0.05, ey + fy * R * 0.17 - qy * R * 0.05, R * 0.06, 0, Math.PI * 2); g.fill();
     }
-    g.fillStyle = "#0c1334";
-    for (const ox of [-0.31, 0.41]) {
-      g.beginPath();
-      g.arc(W / 2 + R * ox, H / 2 - R * 0.04, ER * 0.5, 0, Math.PI * 2);
-      g.fill();
-    }
+    g.strokeStyle = "#0b1130"; g.lineWidth = Math.max(1.2, R * 0.07); g.lineCap = "round";
+    g.beginPath(); g.arc(cx + fx * R * 0.76, cy + fy * R * 0.76, R * 0.17, heading + Math.PI * 0.55, heading + Math.PI * 1.45); g.stroke();
     // floaters
     g.font = `800 ${Math.round(14 * dpr)}px system-ui, sans-serif`;
     g.textAlign = "center";
@@ -412,6 +411,50 @@ export class FrenzyView {
       g.fillText(s.gap, W / 2, H / 2 + 20 * dpr);
     }
   }
+}
+
+/** One glowing crypto bubble with its ticker, like the orbs of the arena: drawn once per symbol, then stamped. */
+const bubbleCache = new Map<number, HTMLCanvasElement>();
+function bubble(index: number): HTMLCanvasElement {
+  let c = bubbleCache.get(index);
+  if (c) return c;
+  const SIZE = 96;
+  c = document.createElement("canvas");
+  c.width = c.height = SIZE;
+  const g = c.getContext("2d");
+  if (g) {
+    const col = SYM_COLOR[index] ?? "#ffffff";
+    const h = SIZE / 2;
+    const halo = g.createRadialGradient(h, h, 0, h, h, h);
+    halo.addColorStop(0, `${col}cc`);
+    halo.addColorStop(0.45, `${col}44`);
+    halo.addColorStop(1, `${col}00`);
+    g.fillStyle = halo;
+    g.fillRect(0, 0, SIZE, SIZE);
+    const R = SIZE * 0.3;
+    g.fillStyle = col;
+    g.beginPath(); g.arc(h, h, R, 0, Math.PI * 2); g.fill();
+    const shade = g.createRadialGradient(h - R * 0.3, h - R * 0.4, R * 0.1, h, h, R);
+    shade.addColorStop(0, "rgba(255,255,255,0.35)");
+    shade.addColorStop(1, "rgba(0,0,0,0.4)");
+    g.fillStyle = shade;
+    g.fill();
+    g.lineWidth = 2.4;
+    g.strokeStyle = "rgba(255,255,255,0.92)";
+    g.stroke();
+    const t = SYM[index] ?? "";
+    g.fillStyle = "#fff";
+    g.font = `800 ${Math.round(Math.min(R * 0.95, (R * 2 * 0.86) / Math.max(2.2, t.length * 0.62)))}px system-ui, sans-serif`;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.lineJoin = "round";
+    g.strokeStyle = "rgba(0,0,0,0.55)";
+    g.lineWidth = 2.5;
+    g.strokeText(t, h, h + 1);
+    g.fillText(t, h, h + 1);
+  }
+  bubbleCache.set(index, c);
+  return c;
 }
 
 export { SYM as FRENZY_SYMBOLS };

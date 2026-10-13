@@ -3,7 +3,7 @@
 // This file is the contract a future real-time arena has to implement to plug into the on-chain rooms.
 // Nothing in the site implements it today, and the page shows a "In design" card (RealtimeArena.astro).
 //
-// Ground rules for whoever builds it (they follow the escrow program and the internal legal review):
+// Ground rules for whoever builds it (they follow the escrow program and docs/legal-review.md):
 //  - The browser NEVER decides who won. The game server collects the result, and only the platform's
 //    server key can sign `finalize_match` with the three winners. The client only displays the outcome.
 //  - Only players of the room (RoomView.players) can take part, and only when the room is `active`.

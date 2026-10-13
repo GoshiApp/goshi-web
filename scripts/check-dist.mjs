@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
-const ORIGIN = "https://goshi.app";
+const ORIGIN = process.env.PUBLIC_TARGET === "test" ? "https://test.goshi.app" : "https://goshi.app";
 const errors = [];
 const fail = (where, msg) => errors.push(`${where}: ${msg}`);
 
@@ -72,7 +72,10 @@ function idsOf(file) {
 const siteSrc = readFileSync(join(root, "src/site.ts"), "utf8");
 const indexable = /indexable:\s*true/.test(siteSrc);
 // The play settings block, read as text (this script does not import TypeScript).
-const playSrc = siteSrc.slice(siteSrc.indexOf("const play: PlayConfig"), siteSrc.indexOf("export const site"));
+const isTestTarget = process.env.PUBLIC_TARGET === "test";
+const playSrc = isTestTarget
+  ? siteSrc.slice(siteSrc.indexOf("const playTest: PlayConfig"), siteSrc.indexOf("const isTest"))
+  : siteSrc.slice(siteSrc.indexOf("const playMain: PlayConfig"), siteSrc.indexOf("const playTest: PlayConfig"));
 const playLocal = process.env.PUBLIC_PLAY_LOCAL === "1"; // local test build: values come from the generated file
 const playOn = playLocal || /\benabled:\s*true\b/.test(playSrc);
 const playCluster = playSrc.match(/\bcluster:\s*"([a-z-]+)"/)?.[1] ?? "devnet";
@@ -217,7 +220,7 @@ if (!playOn) {
   else {
     for (const [label, origin] of [["site.play.rpcUrl", originOf(playRpc)], ["site.play.serverUrl", originOf(playServer)]]) {
       if (!origin || origin === "null") { fail("site.ts", `${label} is not a valid URL`); continue; }
-      for (const cfg of ["public/.htaccess", "firebase.json"]) {
+      for (const cfg of isTestTarget ? ["firebase.test.json"] : ["public/.htaccess", "firebase.json"]) {
         const text = readFileSync(join(root, cfg), "utf8");
         // The play page rule is the line that carries a connect-src with extra origins.
         if (!text.split(/\r?\n/).some((l) => l.includes("connect-src 'self'") && l.includes(origin))) {

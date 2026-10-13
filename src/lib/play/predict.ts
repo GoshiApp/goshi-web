@@ -21,7 +21,9 @@ export const MAX_EXTRAPOLATE_S = 0.4;
 /** Time constant of the error correction (seconds). */
 export const CORRECTION_TAU_S = 0.1;
 
-export const speedOf = (mass: number): number => 135 / (1 + Math.max(0, mass) / 300);
+export const speedOf = (mass: number): number => 135 / (1 + Math.max(0, mass) / 600);
+/** Turn rate for a mass (radians per second). Same formula as the server. */
+export const turnRateOf = (mass: number): number => TURN_RATE / (1 + 0.35 * Math.log(1 + Math.max(0, mass - START_MASS) / 60));
 export const bodyRadius = (mass: number): number => 10 + 1.1 * Math.sqrt(Math.max(0, mass));
 
 /** Speed with the boost applied (the boost does nothing at the minimum mass). */
@@ -50,8 +52,8 @@ export const headingOf = (dx: number, dy: number): number => Math.atan2(dy, dx);
 export interface Kin { x: number; y: number; h: number }
 
 /** One step of the local head: turn toward `want` (or keep the heading when null), then move along the new heading. */
-export function advance(k: Kin, want: number | null, speed: number, dt: number): Kin {
-  const h = want === null ? k.h : turnToward(k.h, want, dt);
+export function advance(k: Kin, want: number | null, speed: number, dt: number, rate: number = TURN_RATE): Kin {
+  const h = want === null ? k.h : turnToward(k.h, want, dt, rate);
   return { x: k.x + Math.cos(h) * speed * dt, y: k.y + Math.sin(h) * speed * dt, h };
 }
 

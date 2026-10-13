@@ -1,0 +1,38 @@
+---
+// The player's profile: skins, daily missions and what unlocks them. Everything is stored in this browser (the wallet only
+// matters for the holder skins). Kept off the play page so the game page stays about playing.
+import { site } from "../site";
+import { copy } from "../content";
+import VerifyBoard from "./VerifyBoard.astro";
+import type { Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const l = copy[lang].play.live;
+---
+<section class="section" id="profile">
+  <div class="wrap profile-stack">
+  <section class="skins glass" data-missions aria-labelledby="missions-h">
+      <h3 id="missions-h">{l.missions.h2}</h3>
+      <p class="muted small">{l.missions.intro}</p>
+      <ul class="mission-list" data-mission-list></ul>
+      <p class="muted small" data-mission-streak aria-live="polite"></p>
+      <script type="application/json" data-missions-i18n set:html={JSON.stringify(l.missions)}></script>
+    </section>
+
+    <section class="skins glass" data-skins aria-labelledby="skins-h">
+      <h3 id="skins-h">{l.skins.h2}</h3>
+      <p class="muted small">{l.skins.intro}</p>
+      <ul class="skin-grid" data-skin-grid></ul>
+      <div class="btn-row"><button type="button" class="btn btn-glass btn-sm" data-skin-connect hidden></button></div>
+      <p class="muted small" data-skin-note aria-live="polite"></p>
+      <script type="application/json" data-skins-i18n set:html={JSON.stringify({ ...l.skins, api: site.play.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:") })}></script>
+    </section>
+
+    <div id="history"><VerifyBoard lang={lang} auto /></div>
+
+  </div>
+</section>
+<script>
+  import "../scripts/skins-ui.ts";
+  import "../scripts/missions-ui.ts";
+</script>
