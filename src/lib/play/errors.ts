@@ -103,6 +103,7 @@ export const ESCROW_ERROR_NAMES = [
   "BadAccountData",
   "AlreadyInitialized",
   "BadInstruction",
+  "TooEarly",
 ] as const;
 export const ESCROW_ERROR_BASE = 6000;
 

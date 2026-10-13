@@ -137,7 +137,7 @@ export const how: Page = {
       h2: "The super pot",
       paras: [
         "The super pot accumulates in $GOSHI: half of every house share. It is paid to a first place only on a jackpot event.",
-        "After a full match of 10 paid players the game server rolls a 1% chance. If it triggers, the whole super pot is paid to the first place (always a paid player: saboteurs cannot win).",
+        "After a full match of 10 paid players there is a 1% chance, drawn from the secret the server committed to before anybody joined and the block where the room filled, so anybody can recompute it from the proof of the match. If it triggers, the whole super pot is paid to the first place (always a paid player: saboteurs cannot win). The payment is made by the team from the vault.",
         "**Trust assumption, stated plainly:** the roll is made by the game server. It cannot be verified on-chain. You have to trust the server for it.",
       ],
       panel: true,
@@ -159,7 +159,7 @@ export const how: Page = {
       head: ["Where", "What it does"],
       rows: [
         ["The contract (on-chain)", "Holds the entry fees in the room account, enforces the split, checks that the podium wallets are players of the room and are different, closes the room and, if a room cannot be played, refunds every entry fee. Anyone can read it and check its transactions."],
-        ["The game server", "Opens rooms, runs the match, decides the ranking, rolls the super pot event and sends the podium to the contract. It signs with a key that only the platform holds. It also runs the swap of SOL to $GOSHI when that phase is enabled."],
+        ["The game server", "Opens rooms, runs the match, decides the ranking, computes the super pot draw and sends the podium to the contract. It signs with a key that only the platform holds. That key opens and settles rooms but cannot change the house wallets or empty the vault: those belong to a separate guardian key. It also runs the swap of SOL to $GOSHI when that phase is enabled."],
         ["Your browser", "Shows rooms, asks your wallet to sign your own transactions, sends your steering and draws the match. It never decides anything."],
         ["Your wallet", "Holds your keys. We never see them. You approve every payment yourself."],
       ],
@@ -171,7 +171,7 @@ export const how: Page = {
       title: "What you have to trust today",
       list: [
         "**The game server decides who wins.** The contract cannot see the match. It trusts the podium that the platform's key sends it. The server could be wrong or be run dishonestly.",
-        "**The game server rolls the super pot.** The 1% event is not verifiable on-chain.",
+        "**The super pot draw can be checked, its payment is made by hand.** The 1% event comes from the committed secret and the block of the match, and the proof of every match lets anybody recompute it. The team makes the payment from the vault.",
         "**The platform key controls the room.** It can open rooms, send the podium and cancel a room to refund the entry fees. It cannot take your wallet's funds, but it chooses who the contract pays inside a room.",
         "**The contract [[t:is on a test network and ]][[n:has not been audited by an external firm.]][[y:was audited by an external firm. TODO(owner): link the report.]]**[[n: An independent audit is planned and not done.]]",
         "**There is no appeal.** A payout on-chain is final.",
@@ -414,7 +414,7 @@ export const faq: Page = {
         { q: "Can I earn money?", a: ["We do not promise earnings, and nobody should expect any. In a room, only three players are paid prizes and the others lose their entry.[[t: On the test network nothing has value.]]"] },
         { q: "Who decides the winners?", a: ["The game server. The contract cannot see the match, so it pays the three winners that the platform's key sends. This is the biggest trust assumption today. See [Security](@security)."] },
         { q: "What does the contract do?", a: ["It holds entries in a vault, checks that the winners are different players of the room, splits the pot in one transaction and refunds everyone if a room is cancelled."] },
-        { q: "What is the super pot?", a: ["A pot in $GOSHI that accumulates from the house share. It is paid to a first place only on a jackpot event: after a full match of 10 paid players the game server rolls a 1% chance. The roll cannot be verified on-chain, so you have to trust the server for it."] },
+        { q: "What is the super pot?", a: ["A pot in $GOSHI that accumulates from the house share. It is paid to a first place only on a jackpot event: after a full match of 10 paid players there is a 1% chance, drawn from the secret the server committed to and the block where the room filled, which anybody can recompute from the proof of the match. The team makes the payment by hand."] },
         { q: "Can I check a payout myself?", a: ["Yes. Every payout is a public transaction, and the play page links to it on the Solana Explorer. [Security](@security) explains what to check."] },
         { q: "Has it been audited?", a: ["[[n:No. An independent audit is planned and not done.]][[y:Yes. TODO(owner): link the audit report.]][[t: The contract runs on a test network.]]"] },
       ],

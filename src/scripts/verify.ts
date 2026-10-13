@@ -55,7 +55,7 @@ if (boot) {
     history.replaceState(null, "", `#${st.address}`);
     void search(st.address);
   });
-  const fromHash = decodeURIComponent(location.hash.slice(1));
+  const fromHash = ((): string => { try { return decodeURIComponent(location.hash.slice(1)); } catch { return ""; } })();
   if (fromHash && kindOf(fromHash)) { input.value = fromHash; void search(fromHash); }
   else if (document.getElementById("verify")?.dataset.autoWallet) {
     // No search asked for: list the matches of the connected wallet, now or as soon as it connects.

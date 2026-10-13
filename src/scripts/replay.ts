@@ -33,6 +33,6 @@ if (boot) {
   for (const ev of ["dragleave", "drop"]) drop.addEventListener(ev, () => drop.classList.remove("over"));
   drop.addEventListener("drop", (e) => { e.preventDefault(); const f = (e as DragEvent).dataTransfer?.files?.[0]; if (f) void openFile(f); });
 
-  const h = decodeURIComponent(location.hash.slice(1));
+  const h = ((): string => { try { return decodeURIComponent(location.hash.slice(1)); } catch { return ""; } })();
   if (/^\d{10,24}$/.test(h)) { $<HTMLInputElement>("replay-room").value = h; void restoreWallet().finally(() => void openRoom(h)); }
 }

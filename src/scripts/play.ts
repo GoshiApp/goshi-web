@@ -839,7 +839,7 @@ async function boot(d: Data) {
       const r = await live.createDuel(opt.lamports, guests);
       duelSay(dt.signing);
       const client = await getClient();
-      await client.sendPrebuilt(r.tx, wallet.signer, {});
+      await client.sendPrebuilt(r.tx, wallet.signer, { entryFee: BigInt(opt.lamports), guests }, {});
       spend.add(opt.lamports);
       renderSpend();
       showDuelLink(r.roomId, r.players);

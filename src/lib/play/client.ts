@@ -11,6 +11,7 @@ import { GoshiEscrow, ROOM_LEN, decodeConfig, decodeRoom, type RoomAccount } fro
 import { PlayError, classifyError, txErrorText } from "./errors.ts";
 import { canJoinFree, canJoinPaid, sortRooms, type RoomView } from "./rooms.ts";
 import type { Signer } from "./wallet.ts";
+import { checkDuelTx } from "./prebuilt.ts";
 
 export interface ClientSettings {
   rpcUrl: string;
@@ -27,6 +28,8 @@ export interface SendCallbacks {
 
 /** What the contract has stored, as far as the page needs it. */
 export interface ChainConfig {
+  /** The key that signs the game's own instructions, as recorded in the program's configuration. */
+  authority: PublicKey;
   /** $GOSHI base units (6 decimals) a wallet must hold to take a saboteur seat. */
   minHolder: bigint;
   dexEnabled: boolean;
@@ -102,7 +105,7 @@ export class PlayClient {
     if (!cfg) throw new PlayError("wrongConfig", "The program has not been initialized");
     const same = cfg.mint.equals(this.mint) && cfg.infraWallet.equals(this.infraWallet) && cfg.liquidityWallet.equals(this.liquidityWallet);
     if (!same) throw new PlayError("wrongConfig", "The site settings do not match the on-chain configuration");
-    return { minHolder: cfg.minHolder, dexEnabled: false, requiredSaboteurs: cfg.requiredSaboteurs };
+    return { authority: cfg.authority, minHolder: cfg.minHolder, dexEnabled: false, requiredSaboteurs: cfg.requiredSaboteurs };
   }
 
   /** Every MatchRoom account of the program: waiting rooms first, then by number. */
@@ -220,9 +223,20 @@ export class PlayClient {
    * Signs and sends a transaction that the game server built and signed as the authority (a private duel). The wallet adds the host's
    * signature. The server's blockhash is fresh, so this has to happen within about a minute.
    */
-  async sendPrebuilt(base64: string, wallet: Signer, cb: SendCallbacks = {}): Promise<string> {
-    await this.verifyConfig();
-    const tx = Transaction.from(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
+  async sendPrebuilt(base64: string, wallet: Signer, expected: { entryFee: bigint; guests: string[] }, cb: SendCallbacks = {}): Promise<string> {
+    const chain = await this.verifyConfig();
+    let tx: Transaction;
+    try {
+      tx = Transaction.from(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
+    } catch {
+      throw new PlayError("unknown", "The transaction from the server could not be read");
+    }
+    // The wallet is only asked to sign what the player asked for: one instruction of this program, for this fee and these guests.
+    const verdict = checkDuelTx(tx, {
+      programId: this.programId, authority: chain.authority, host: wallet.publicKey, entryFee: expected.entryFee,
+      guests: expected.guests.map((g) => new PublicKey(g)), configPda: this.escrow.pda.config, roomPda: (id) => this.escrow.pda.room(id),
+    });
+    if (!verdict.ok) throw new PlayError("unknown", `The transaction from the server was refused (${verdict.reason}). Nothing was signed.`);
     const lastValidBlockHeight = (await this.connection.getLatestBlockhash("confirmed")).lastValidBlockHeight;
     let signature: string;
     try {

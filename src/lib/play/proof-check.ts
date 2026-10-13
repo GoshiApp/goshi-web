@@ -7,7 +7,7 @@
 import type { EndProof } from "./protocol.ts";
 import { buildMap, decodeReplay, simulate, type Sym } from "./frenzy-sim.ts";
 
-export type StepId = "commit" | "seed" | "replay" | "mass" | "arena" | "chain";
+export type StepId = "commit" | "seed" | "block" | "replay" | "mass" | "arena" | "jackpot" | "chain";
 export interface Step { id: StepId; ok: boolean | null; detail?: string }
 
 export interface CheckInput {
@@ -34,6 +34,31 @@ async function sha256(...parts: Uint8Array[]): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", all));
 }
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
+
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+/** A base58 string (a blockhash) as lowercase hex. */
+export function b58hex(text: string): string {
+  let n = 0n;
+  for (const c of text) {
+    const v = B58.indexOf(c);
+    if (v < 0) return "";
+    n = n * 58n + BigInt(v);
+  }
+  let h = n === 0n ? "" : n.toString(16);
+  if (h.length % 2) h = "0" + h;
+  const zeros = text.length - text.replace(/^1+/, "").length;
+  return "00".repeat(zeros) + h;
+}
+
+/** The super pot draw, as the server computes it (server/src/game/settlement.ts, jackpotDraw): 1 in `oneIn`, from the secret and the block. */
+export async function jackpotDrawn(secret: Uint8Array, blockhash: Uint8Array, roomId: string, oneIn: number): Promise<boolean> {
+  if (!Number.isInteger(oneIn) || oneIn < 1) return false;
+  if (oneIn === 1) return true;
+  const id = new Uint8Array(8);
+  if (/^\d+$/.test(roomId)) new DataView(id.buffer).setBigUint64(0, BigInt(roomId), true);
+  const h = await sha256(enc.encode("goshi-jackpot-v1"), secret, blockhash, id);
+  return new DataView(h.buffer, h.byteOffset).getUint32(0, true) % oneIn === 0;
+}
 
 /** Room id bytes the way the server derives them: u64 little endian for numeric ids, else the first 8 bytes of sha256. */
 async function idBytes(roomId: string): Promise<Uint8Array> {
@@ -88,6 +113,27 @@ export async function verifyMatch(i: CheckInput, fetchFn: typeof fetch = fetch):
     }
   }
 
+  // 3b. the block of the seed: the one where the room filled (read from the node; older matches have no slot)
+  if (p.slot !== undefined) {
+    try {
+      const r = await fetchFn(i.rpcUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBlock", params: [Number(p.slot), { commitment: "confirmed", transactionDetails: "none", rewards: false, maxSupportedTransactionVersion: 0 }] }),
+      });
+      const j: any = await r.json();
+      const bh: string | undefined = j?.result?.blockhash;
+      if (typeof bh !== "string") steps.push({ id: "block", ok: null, detail: `slot ${p.slot}` });
+      else steps.push({ id: "block", ok: b58hex(bh) === p.blockhash, detail: `slot ${p.slot}` });
+    } catch {
+      steps.push({ id: "block", ok: null, detail: `slot ${p.slot}` });
+    }
+  }
+  // 3c. the super pot draw is the same function of the same material
+  if (p.jackpot) {
+    steps.push({ id: "jackpot", ok: (await jackpotDrawn(secret, blockhash, i.roomId, p.jackpot.oneIn)) === p.jackpot.drawn });
+  }
+
   // 4. the record of the whole arena phase: every steering and boost change of every player, one file, one hash.
   const arenaEntry = p.replays.find((r) => r.w === "arena");
   if (arenaEntry) {
@@ -122,7 +168,12 @@ export async function verifyMatch(i: CheckInput, fetchFn: typeof fetch = fetch):
         const f = line.slice("Program data: ".length).split(" ");
         // fields: kind, room id, secret, blockhash, snapshot hash, replay root
         const root = await sha256(...[...p.replays].sort((a, b) => (a.w < b.w ? -1 : 1)).flatMap((r) => [enc.encode(r.w), unhex(r.hash)]));
-        const ok = f[2] === b64(secret) && f[3] === b64(blockhash) && f[4] === b64(unhex(p.snapshot.hash)) && f[5] === b64(root);
+        let ok = f[2] === b64(secret) && f[3] === b64(blockhash) && f[4] === b64(unhex(p.snapshot.hash)) && f[5] === b64(root);
+        // Programs from the 12 October upgrade also log the slot where the room became active as a seventh field.
+        if (ok && p.slot !== undefined && f[6] !== undefined) {
+          const raw = Uint8Array.from(atob(f[6]), (c) => c.charCodeAt(0));
+          ok = raw.length === 8 && new DataView(raw.buffer).getBigUint64(0, true) === BigInt(p.slot);
+        }
         steps.push({ id: "chain", ok });
       }
     } catch {

@@ -97,9 +97,11 @@ export const verifyCopy: VerifyCopy = {
   steps: {
     commit: "The secret seed matches the room's commitment",
     seed: "The map comes from that seed and the chosen block",
+    block: "The block the seed uses is the one where the room filled, and nobody could know it beforehand",
     replay: "The moves file is the one that was published",
     mass: "Replaying the moves gives the same mass",
     arena: "The record of every movement in the match is the one that was published",
+    jackpot: "The super pot draw follows from the same seed and block",
     chain: "The closing transaction stored the same data",
   },
   ok: "Correct",

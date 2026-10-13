@@ -85,6 +85,10 @@ export interface StatsMsg {
 }
 export interface EndProof {
   commit: string; seedReveal: string; blockhash: string; signature: string;
+  /** The slot of the block `blockhash` belongs to: the one in which the room became active (newer matches only). */
+  slot?: string;
+  /** The super pot draw the server stated, which anybody can recompute from the secret and the blockhash. */
+  jackpot?: { oneIn: number; drawn: boolean };
   snapshot: { hash: string; source: string; at: number; mass?: Record<string, number> };
   replays: { w: string; hash: string; bytes: number }[];
 }
@@ -270,6 +274,8 @@ function parseProof(v: unknown): EndProof | undefined {
   if (!Array.isArray(v.replays) || !v.replays.every((r) => isObj(r) && isStr(r.w) && isStr(r.hash) && isNum(r.bytes))) return undefined;
   return {
     commit: v.commit, seedReveal: v.seedReveal, blockhash: v.blockhash, signature: v.signature,
+    ...(isStr(v.slot) && /^\d{1,20}$/.test(v.slot) ? { slot: v.slot } : {}),
+    ...(isObj(v.jackpot) && isNum(v.jackpot.oneIn) && typeof v.jackpot.drawn === "boolean" ? { jackpot: { oneIn: v.jackpot.oneIn, drawn: v.jackpot.drawn } } : {}),
     snapshot: { hash: sn.hash, source: sn.source, at: sn.at, ...(isObj(sn.mass) ? { mass: sn.mass as Record<string, number> } : {}) },
     replays: v.replays as EndProof["replays"],
   };

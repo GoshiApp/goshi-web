@@ -137,7 +137,7 @@ export const how: Page = {
       h2: "El Super Pozo",
       paras: [
         "El Super Pozo se acumula en $GOSHI: la mitad de cada parte de la casa. Se paga al primer lugar solo en un evento de jackpot.",
-        "Tras una partida completa de 10 jugadores de pago, el servidor de juego tira un 1% de probabilidad. Si se activa, todo el Super Pozo se paga al primer lugar (siempre un jugador de pago: los saboteadores no pueden ganar).",
+        "Tras una partida completa de 10 jugadores de pago hay un 1% de probabilidad, sacado del secreto al que el servidor se comprometió antes de que entrara nadie y del bloque en que se llenó la sala, así que cualquiera puede recalcularlo con la prueba de la partida. Si se activa, todo el Super Pozo se paga al primer lugar (siempre un jugador de pago: los saboteadores no pueden ganar). El pago lo hace el equipo desde la bóveda.",
         "**Suposición de confianza, dicha claro:** la tirada la hace el servidor de juego. No se puede verificar en la cadena. Tienes que confiar en el servidor para ella.",
       ],
       panel: true,
@@ -159,7 +159,7 @@ export const how: Page = {
       head: ["Dónde", "Qué hace"],
       rows: [
         ["El contrato (en la cadena)", "Guarda las entradas en la cuenta de la sala, hace cumplir el reparto, comprueba que las billeteras del podio son jugadoras de la sala y distintas, cierra la sala y, si una sala no se puede jugar, devuelve todas las entradas. Cualquiera puede leerlo y comprobar sus transacciones."],
-        ["El servidor de juego", "Abre salas, corre la partida, decide la clasificación, hace la tirada del Super Pozo y envía el podio al contrato. Firma con una clave que solo tiene la plataforma. También hace el cambio de SOL a $GOSHI cuando esa fase está activada."],
+        ["El servidor de juego", "Abre salas, corre la partida, decide la clasificación, calcula el sorteo del Super Pozo y envía el podio al contrato. Firma con una clave que solo tiene la plataforma. Esa clave abre y liquida salas pero no puede cambiar las billeteras de la casa ni vaciar la bóveda: eso es de una clave guardiana aparte. También hace el cambio de SOL a $GOSHI cuando esa fase está activada."],
         ["Tu navegador", "Muestra las salas, pide a tu billetera que firme tus propias transacciones, envía tu dirección de movimiento y dibuja la partida. Nunca decide nada."],
         ["Tu billetera", "Guarda tus claves. Nosotros nunca las vemos. Tú apruebas cada pago."],
       ],
@@ -171,7 +171,7 @@ export const how: Page = {
       title: "En qué tienes que confiar hoy",
       list: [
         "**El servidor de juego decide quién gana.** El contrato no puede ver la partida. Confía en el podio que le envía la clave de la plataforma. El servidor podría equivocarse o ser gestionado de forma deshonesta.",
-        "**El servidor de juego hace la tirada del Super Pozo.** El evento del 1% no se puede verificar en la cadena.",
+        "**El sorteo del Super Pozo se puede comprobar, su pago se hace a mano.** El evento del 1% sale del secreto comprometido y del bloque de la partida, y la prueba de cada partida permite recalcularlo. El pago lo hace el equipo desde la bóveda.",
         "**La clave de la plataforma controla la sala.** Puede abrir salas, enviar el podio y cancelar una sala para devolver las entradas. No puede tomar los fondos de tu billetera, pero elige a quién paga el contrato dentro de una sala.",
         "**El contrato [[t:está en una red de pruebas y ]][[n:no ha sido auditado por una empresa externa.]][[y:fue auditado por una empresa externa. TODO(owner): enlazar el informe.]]**[[n: Una auditoría independiente está planificada y no está hecha.]]",
         "**No hay apelación.** Un pago en la cadena es definitivo.",
@@ -414,7 +414,7 @@ export const faq: Page = {
         { q: "¿Puedo ganar dinero?", a: ["No prometemos ganancias y nadie debería esperarlas. En una sala solo cobran premios tres jugadores y los demás pierden su entrada.[[t: En la red de pruebas nada tiene valor.]]"] },
         { q: "¿Quién decide los ganadores?", a: ["El servidor de juego. El contrato no puede ver la partida, así que paga a los tres ganadores que le envía la clave de la plataforma. Esta es la mayor suposición de confianza de hoy. Mira [Seguridad](@security)."] },
         { q: "¿Qué hace el contrato?", a: ["Guarda las entradas en una bóveda, comprueba que los ganadores son jugadores distintos de la sala, reparte el pozo en una sola transacción y devuelve todo si se cancela una sala."] },
-        { q: "¿Qué es el Super Pozo?", a: ["Un pozo en $GOSHI que se acumula con la parte de la casa. Se paga al primer lugar solo en un evento de jackpot: tras una partida completa de 10 jugadores de pago, el servidor de juego tira un 1% de probabilidad. La tirada no se puede verificar en la cadena, así que tienes que confiar en el servidor para ella."] },
+        { q: "¿Qué es el Super Pozo?", a: ["Un pozo en $GOSHI que se acumula con la parte de la casa. Se paga al primer lugar solo en un evento de jackpot: tras una partida completa de 10 jugadores de pago hay un 1% de probabilidad, sacado del secreto al que el servidor se comprometió y del bloque en que se llenó la sala, que cualquiera puede recalcular con la prueba de la partida. El equipo hace el pago a mano."] },
         { q: "¿Puedo comprobar un premio yo mismo?", a: ["Sí. Cada premio es una transacción pública y la página de juego enlaza a ella en el Solana Explorer. [Seguridad](@security) explica qué comprobar."] },
         { q: "¿Está auditado?", a: ["[[n:No. Una auditoría independiente está planificada y no está hecha.]][[y:Sí. TODO(owner): enlazar el informe de la auditoría.]][[t: El contrato funciona en una red de pruebas.]]"] },
       ],

@@ -213,7 +213,7 @@ export interface PlayCopy {
     /** Proof of playback: re-check a match in the browser. */
     proof: {
       h: string; text: string; button: string; running: string; ok: string; bad: string; unknown: string;
-      steps: Record<"commit" | "seed" | "replay" | "mass" | "arena" | "chain", string>;
+      steps: Record<"commit" | "seed" | "block" | "replay" | "mass" | "arena" | "jackpot" | "chain", string>;
       download: string;
     };
     /** The minute of frenzy that opens every match. */
@@ -302,7 +302,7 @@ export interface VerifyCopy {
   label: string; placeholder: string; button: string; searching: string; none: string; error: string; hint: string;
   kinds: Record<"wallet" | "tx" | "room" | "hash", string>;
   match: string; place: string; entry: string; tx: string; noTx: string; arenaFile: string; yourFile: string; check: string; checking: string;
-  steps: Record<"commit" | "seed" | "replay" | "mass" | "arena" | "chain", string>;
+  steps: Record<"commit" | "seed" | "block" | "replay" | "mass" | "arena" | "jackpot" | "chain", string>;
   ok: string; bad: string; unknown: string; sol: string;
   watch: string; mine: string; mineNeedWallet: string; howTitle: string; how: string[]; winTitle: string; win: string[];
 }

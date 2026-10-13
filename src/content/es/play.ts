@@ -387,9 +387,11 @@ export const play: PlayCopy = {
       steps: {
         commit: "La semilla secreta coincide con el compromiso de la sala",
         seed: "El mapa sale de esa semilla y del bloque elegido",
+        block: "El bloque de la semilla es el que llenó la sala, y nadie podía conocerlo antes",
         replay: "El archivo de tus movimientos es el que se publicó",
         mass: "Repetir tus movimientos da la misma masa",
         arena: "El registro de todos los movimientos de la partida es el que se publicó",
+        jackpot: "El sorteo del super bote sale de la misma semilla y del mismo bloque",
         chain: "La transacción de cierre guardó los mismos datos",
       },
       download: "Descargar el registro completo de la partida",

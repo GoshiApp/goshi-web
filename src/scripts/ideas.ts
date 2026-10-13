@@ -279,7 +279,7 @@ if (boot) {
       if (!r.ok) throw new Error(String(r.status));
       items = ((await r.json()) as { items: Idea[] }).items;
       draw(items);
-      const hash = decodeURIComponent(location.hash.slice(1));
+      const hash = ((): string => { try { return decodeURIComponent(location.hash.slice(1)); } catch { return ""; } })();
       if (hash && /^[A-Za-z0-9_-]{6,20}$/.test(hash)) document.getElementById(hash)?.scrollIntoView({ block: "center" });
     } catch {
       list.textContent = "";
