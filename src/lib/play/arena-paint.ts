@@ -14,6 +14,8 @@ import { FINAL_PHASE } from "./arena-zone.ts";
 import { skinById } from "./skins.ts";
 import { COINS, coinIndex } from "./coins.ts";
 import { GOSHI_HUES, blinkAmount, dizzyAlpha, hash, moodOf, type Mood } from "./goshi-face.ts";
+import { drawYouMarker } from "./you-marker.ts";
+import { leadStrings } from "./lead-strings.ts";
 import { HEAD_DRAW_SCALE, LabelPlacer, dangerAmong, headOnPairs, zoneGuide } from "./arena-view.ts";
 import type { Orb, PlayerSnap, ZoneNow } from "./protocol.ts";
 
@@ -24,11 +26,12 @@ export const SABOTEUR_BODY = "#7a3a22";
 /** Orb radius in world units for its mass value. */
 export const orbRadius = (v: number): number => 3 + 1.6 * Math.sqrt(Math.max(v, 0));
 
-/** A stable hue for a wallet (green to violet). Saboteurs have their own orange, so the two never look alike. */
+/** A stable hue for a wallet (yellow green through the greens, blues and violets to pink). Saboteurs have their own orange, so the two never look alike. */
 export function hueFor(wallet: string): number {
   let h = 0;
   for (let i = 0; i < wallet.length; i++) h = (h * 31 + wallet.charCodeAt(i)) >>> 0;
-  return 110 + (h % 190);
+  // The whole wheel except the orange of the saboteurs: with twenty bodies on screen two must rarely look alike.
+  return 70 + (h % 260);
 }
 
 /** The old plain color (used by the mini map and the legend). */
@@ -112,6 +115,10 @@ export class ArenaPainter {
   private readonly placer = new LabelPlacer();
   private ownHue: number | null = null;
   private curYou = "";
+  /** When the body of the player was first seen protected (a fresh body): the "you" marker counts from there. */
+  private youSince = 0;
+  /** A new body for the viewer (the live arena): the "this one is you" marker plays again. */
+  resetYouMarker(): void { this.youSince = 0; }
   private readonly ateAt = new Map<string, number>();
   private readonly dizzy: { x: number; y: number; r: number; c: number; at: number }[] = [];
   private ringText = "";
@@ -327,6 +334,14 @@ export class ArenaPainter {
 
     // Screen space.
     g.setTransform(1, 0, 0, 1, 0, 0);
+    if (f.meAlive && me) {
+      if (this.youSince === 0 && me.prot) this.youSince = now;
+      if (this.youSince > 0) {
+        const sxm = (me.head[0] - f.cam.x) * scale + W / 2 + f.shake[0];
+        const sym = (me.head[1] - f.cam.y) * scale + H / 2 + f.shake[1];
+        drawYouMarker(g, sxm, sym, me.r * scale, (now - this.youSince) / 1000, dpr);
+      }
+    }
     if (this.quality.vignette) this.vignetteLayer(g, W, H);
     if (danger > 0) {
       let d = this.dangerGrad;
@@ -390,6 +405,7 @@ export class ArenaPainter {
     // Extras: a failure in one of them must never take the whole picture with it.
     try { this.board(f, order); } catch { /* the board is optional */ }
     try { this.leaderMark(f, order); } catch { /* so is the leader mark */ }
+    try { this.leadStrip(f, order); } catch { /* and the lead strip */ }
 
     if (!f.hasState) {
       g.fillStyle = "#ffffff";
@@ -933,8 +949,8 @@ export class ArenaPainter {
     if (alive.length === 0) return;
     const size = Math.max(84 * dpr, Math.min(150 * dpr, Math.min(W, H) * 0.24));
     const pad = 10 * dpr;
-    const rowH = 15 * dpr;
-    const wBox = Math.min(size + 30 * dpr, W * 0.4);
+    const rowH = 17 * dpr;
+    const wBox = Math.min(size + 40 * dpr, W * 0.45);
     const x0 = W - wBox - pad;
     const rows = [...alive].sort((a, b) => b.m - a.m);
     const top = rows.slice(0, 10);
@@ -947,7 +963,7 @@ export class ArenaPainter {
     g.fillStyle = "rgba(5,8,25,0.6)";
     roundRect(g, x0, y0, wBox, n * rowH + 8 * dpr, 8 * dpr);
     g.fill();
-    g.font = this.font(10.5 * dpr);
+    g.font = this.font(12 * dpr);
     g.textBaseline = "middle";
     const drawRow = (p: PlayerSnap, rank: number, y: number) => {
       const mine = p.w === f.you;
@@ -961,6 +977,42 @@ export class ArenaPainter {
     top.forEach((p, i) => drawRow(p, i + 1, y0 + 4 * dpr + (i + 0.5) * rowH));
     if (extra) drawRow(extra, meIdx + 1, y0 + 4 * dpr + (top.length + 0.5) * rowH);
     g.globalAlpha = 1;
+  }
+
+  /** Who is first and by how much, always on screen, big enough to read on a phone: the leader and the gap to you (or your lead). */
+  private leadStrip(f: Frame, alive: readonly PlayerSnap[]) {
+    const { g, W, H, dpr } = f;
+    if (alive.length < 2) return;
+    const rows = [...alive].sort((a, b) => b.m - a.m || (a.w < b.w ? -1 : 1));
+    const lead = rows[0];
+    const meIdx = rows.findIndex((p) => p.w === f.you);
+    const s = leadStrings();
+    const name = (p: PlayerSnap) => (p.n.length > 12 ? `${p.n.slice(0, 11)}\u2026` : p.n);
+    const l1 = s.top.replace("{name}", name(lead)).replace("{m}", String(Math.round(lead.m)));
+    let l2 = "";
+    if (meIdx === 0) l2 = s.youLead.replace("{n}", String(Math.max(0, Math.round(lead.m - rows[1].m))));
+    else if (meIdx > 0) l2 = s.youBehind.replace("{rank}", String(meIdx + 1)).replace("{n}", String(Math.max(0, Math.round(lead.m - rows[meIdx].m))));
+    const px = Math.round(Math.max(13, Math.min(17, W / 30 / dpr * 1)) * dpr);
+    g.font = this.font(px);
+    const wMax = Math.min(W - 230 * dpr, W * 0.7);
+    const w1 = g.measureText(l1).width, w2 = l2 ? g.measureText(l2).width : 0;
+    const w = Math.min(wMax, Math.max(w1, w2) + 20 * dpr);
+    const h = (l2 ? 2 : 1) * px * 1.3 + 12 * dpr;
+    const x = W / 2 - w / 2;
+    const y = H - h - 54 * dpr;
+    g.globalAlpha = 0.86;
+    g.fillStyle = "rgba(5,8,25,0.78)";
+    roundRect(g, x, y, w, h, 10 * dpr);
+    g.fill();
+    g.globalAlpha = 1;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillStyle = "#ffd447";
+    g.fillText(l1, W / 2, y + 6 * dpr + px * 0.65, w - 12 * dpr);
+    if (l2) {
+      g.fillStyle = meIdx === 0 ? "#7be3c3" : "#ffffff";
+      g.fillText(l2, W / 2, y + 6 * dpr + px * 1.95, w - 12 * dpr);
+    }
   }
 
   /** A crown over the leader's head, or an arrow with a crown at the screen edge that points to it. */

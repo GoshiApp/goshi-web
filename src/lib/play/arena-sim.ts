@@ -3,6 +3,15 @@
 // Battle royale arena with solid bodies. Pure and deterministic: no network, no clock, no I/O.
 // The rules are in server/PROTOCOL.md (section "Game rules").
 
+/** A player whose connection drops is played by the bot and cannot be hurt for this long. It is part of the match record. */
+export const AWAY_PROTECT_S = 20;
+/** While the bot plays a body for a player who is not there, the body does not eat and loses this share of its mass per second. */
+export const AWAY_DRAIN_PER_S = 0.03;
+/** When they come back they get this long to find their body and steer. */
+export const BACK_PROTECT_S = 5;
+/** How many times a player may drop and be covered in one match (a flapping connection must not be a shield). */
+export const MAX_AWAYS = 2;
+
 export const ARENA = {
   w: 3000,
   h: 3000,
@@ -72,6 +81,10 @@ export interface Player {
   trail: [number, number][];
   /** Seconds into the match until which the player cannot die. */
   protectUntil: number;
+  /** True while the bot plays this body because the person's connection dropped. */
+  auto?: boolean;
+  /** How many times this player was covered after a dropped connection. */
+  aways?: number;
   /** Seconds into the match when it died; -1 while alive. */
   diedAt: number;
   killer: string;
@@ -88,8 +101,18 @@ export interface StepResult {
 }
 
 // Sized like the .io snake games: a head is about 15 units wide at the start and moves about 9 radii per second.
-export const bodyRadius = (m: number) => 10 + 1.1 * Math.sqrt(m);
-export const speedOf = (m: number) => 135 / (1 + m / 600);
+/**
+ * The rules of the arena come in versions, and a match record says which one it was played with (see the server file):
+ *  1: the first version. 2: bodies grow in proportion, a heavy body is a little slower only, a body three times heavier than
+ *  another eats it by bites instead of dying on it, and the more a body weighs the richer the orbs it leaves.
+ */
+export type RulesVersion = 1 | 2;
+export const RULES_NOW: RulesVersion = 2;
+let activeRules: RulesVersion = RULES_NOW;
+export const setRules = (v: RulesVersion): void => { activeRules = v; };
+export const rulesActive = (): RulesVersion => activeRules;
+export const bodyRadius = (m: number) => (activeRules === 1 ? 10 + 1.1 * Math.sqrt(m) : 8 + 1.9 * Math.sqrt(m));
+export const speedOf = (m: number) => (activeRules === 1 ? 135 / (1 + m / 600) : 135 / (1 + m / 2500));
 /** Turn rate in radians per second: a heavy body turns wider, but never becomes a slug (a log, not a hyperbola). */
 export const turnRateOf = (m: number) => ARENA.turnRate / (1 + 0.35 * Math.log(1 + Math.max(0, m - ARENA.startMass) / 60));
 export const segmentCount = (m: number) =>
@@ -197,6 +220,8 @@ export class Arena {
   time = 0; // seconds
   private nextOrbId = 1;
   readonly matchMs: number;
+  /** The version of the rules this match is played with. */
+  readonly rules: RulesVersion;
   readonly shrinkStartMs: number;
   readonly zonePlan: ZonePlan;
   /** Every change of steering or boost of every player, as [tick, player index, angle byte, boost]. This is the match record. */
@@ -207,8 +232,10 @@ export class Arena {
   constructor(
     seed: number,
     entrants: { w: string; n: string; role: Role; bot: boolean }[],
-    opts: { matchMs?: number; shrinkStartMs?: number } = {},
+    opts: { matchMs?: number; shrinkStartMs?: number; rules?: RulesVersion } = {},
   ) {
+    this.rules = opts.rules ?? RULES_NOW;
+    setRules(this.rules);
     this.matchMs = opts.matchMs ?? ARENA.matchMs;
     this.shrinkStartMs = opts.shrinkStartMs ?? ARENA.shrinkStartMs;
     this.rng = new Rng(seed);
@@ -266,13 +293,33 @@ export class Arena {
 
   setInput(w: string, dx: number, dy: number, boost: boolean) {
     const p = this.player(w);
-    if (!p || !p.alive) return;
+    if (!p || !p.alive || p.auto) return;
     let x = Number.isFinite(dx) ? dx : 0;
     let y = Number.isFinite(dy) ? dy : 0;
     const len = Math.hypot(x, y);
     if (len > 1) { x /= len; y /= len; }
     if (len > 0) { p.dx = x; p.dy = y; }
     p.boost = !!boost;
+  }
+
+  private pendingAway: { w: string; back: boolean }[] = [];
+  /** The person's connection dropped: the bot plays the body and nothing can hurt it for AWAY_PROTECT_S. Limited per match.
+   *  It takes effect at the next step and is written in the match record (flag 2), so the match still replays exactly. */
+  away(w: string): boolean {
+    const p = this.player(w);
+    if (!p || !p.alive || p.auto || (p.aways ?? 0) >= MAX_AWAYS) return false;
+    p.aways = (p.aways ?? 0) + 1;
+    p.auto = true;
+    this.pendingAway.push({ w, back: false });
+    return true;
+  }
+  /** The person is back: they steer again and have BACK_PROTECT_S to find their body (flag 3 in the record). */
+  back(w: string): boolean {
+    const p = this.player(w);
+    if (!p || !p.alive || !p.auto) return false;
+    p.auto = false;
+    this.pendingAway.push({ w, back: true });
+    return true;
   }
 
   aliveCount() {
@@ -288,7 +335,7 @@ export class Arena {
     // 100% of the mass becomes orbs over the exact path of the body.
     const pts = bodyPoints(p);
     const count = Math.max(1, Math.min(ARENA.maxDeathOrbs, Math.floor(p.m)));
-    const value = p.m / count;
+    const value = (p.m / count) * (this.rules >= 2 ? 1 + Math.min(0.5, p.m / 6000) : 1);
     for (let i = 0; i < count; i++) {
       const [x, y] = pts[Math.min(pts.length - 1, Math.floor((i * pts.length) / count))];
       const o: Orb = { id: this.nextOrbId++, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, v: Math.round(value * 1000) / 1000 };
@@ -301,6 +348,14 @@ export class Arena {
 
   step(dt: number, brain?: (a: Arena, p: Player) => { dx: number; dy: number; boost: boolean }): StepResult {
     const ev: StepResult = { eatenOrbs: [], newOrbs: [], deaths: [] };
+    setRules(this.rules);
+    for (const q of this.pendingAway.splice(0)) {
+      const pi = this.players.findIndex((x) => x.w === q.w);
+      if (pi < 0) continue;
+      const secs = q.back ? BACK_PROTECT_S : AWAY_PROTECT_S;
+      this.players[pi].protectUntil = Math.max(this.players[pi].protectUntil, this.time + secs);
+      this.inputLog.push([this.stepN, pi, 0, q.back ? 3 : 2]);
+    }
     this.time += dt;
     const zoneNow = this.zoneNow();
     const cx = zoneNow.cx;
@@ -312,7 +367,7 @@ export class Arena {
     for (let pi = 0; pi < this.players.length; pi++) {
       const p = this.players[pi];
       if (!p.alive) continue;
-      if (p.bot && brain) {
+      if ((p.bot || p.auto) && brain) {
         const a = brain(this, p);
         p.dx = a.dx; p.dy = a.dy; p.boost = a.boost;
       }
@@ -381,9 +436,15 @@ export class Arena {
       }
     }
 
+    // A body that is played by the bot because its person is not there is shielded for a short time, but it shrinks and eats
+    // nothing: dropping the connection is never a way to keep a body alive for free.
+    for (const p of this.players) {
+      if (p.alive && p.auto && p.m > ARENA.minMass) p.m = Math.max(ARENA.minMass, p.m * (1 - AWAY_DRAIN_PER_S * dt));
+    }
+
     // Orbs.
     for (const p of this.players) {
-      if (!p.alive) continue;
+      if (!p.alive || p.auto) continue;
       const r = bodyRadius(p.m) + 6;
       for (let i = this.orbs.length - 1; i >= 0; i--) {
         const o = this.orbs[i];
@@ -428,6 +489,15 @@ export class Arena {
           const ddy = a.y - pts[k][1];
           const lim = rb + ra * 0.35;
           if (ddx * ddx + ddy * ddy < lim * lim) {
+            // Rules 2: a body at least three times heavier eats a bite of the small body instead of dying on it.
+            if (this.rules >= 2 && a.m >= b.m * 3) {
+              const bite = Math.max(0.4, b.m * 0.04);
+              b.m -= bite;
+              a.m += bite;
+              if (a.m > a.peak) a.peak = a.m;
+              if (b.m < ARENA.deathMass && !dying.has(b.w)) dying.set(b.w, a.w);
+              break;
+            }
             if (!dying.has(a.w)) dying.set(a.w, b.w);
             break;
           }
@@ -482,6 +552,7 @@ export class Arena {
 
 /** A small bot for the devnet test mode: stay inside the zone, avoid bodies, eat orbs. */
 export function arenaBrain(a: Arena, me: Player): { dx: number; dy: number; boost: boolean } {
+  setRules(a.rules);
   const zone = a.zone();
   const cx = zone.cx;
   const cy = zone.cy;

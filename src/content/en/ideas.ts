@@ -108,6 +108,11 @@ export const verifyCopy: VerifyCopy = {
   bad: "Does not match",
   unknown: "Could not be checked",
   sol: "SOL",
+  pay: {
+    title: "Where the money went", pot: "Pot", first: "Place {n}", saboteurs: "Saboteurs ({n}), each", house: "House share", burn: "Buy-back and burn", infra: "Infrastructure",
+    liquidity: "Liquidity", jackpot: "Super pot", note: "A share smaller than the network minimum (about 0.0009 SOL) cannot be sent to a wallet: it goes to the super pot.",
+    winner: "Winner", others: "Each of the others",
+  },
   watch: "Watch it",
   mine: "Show my matches (connected wallet)",
   mineNeedWallet: "Connect your wallet (top right) and press the button again, or paste your address above.",
@@ -118,12 +123,12 @@ export const verifyCopy: VerifyCopy = {
     "Press \"Verify in your browser\" on any match to re-check the seed, your moves and the on-chain record without trusting anyone.",
     "Practice matches are free and are not on chain: they appear in the results screen of the game, not here.",
   ],
-  winTitle: "What you can win on devnet",
+  winTitle: "[[t:What you can win on devnet]][[m:What you can win]]",
   win: [
-    "Practice (free): the top 3 get test SOL from Goshi: 0.02 for 1st, 0.01 for 2nd, 0.005 for 3rd. It is a gift to people trying the game, developers included.",
-    "Paid test rooms: the entry is test SOL. The prize pool is 88% of the entries, split 60% / 25% / 15% between the top 3. With bots filling the room you still win the same pool.",
+    "[[t:Practice (free): the top 3 get test SOL from Goshi: 0.02 for 1st, 0.01 for 2nd, 0.005 for 3rd. It is a gift to people trying the game, developers included.]][[m:Practice (free): nothing is signed and there are no prizes.]]",
+    "[[t:Paid test rooms: the entry is test SOL. The prize pool is 88% of the entries, split 60% / 25% / 15% between the top 3. With bots filling the room you still win the same pool.]][[m:Paid rooms: the entry is SOL from your own wallet. The prize pool is 88% of the entries, split 60% / 25% / 15% between the top 3.]]",
     "Duels: the winner takes the pot minus 3%.",
-    "It is devnet test SOL with no monetary value. Nothing here is real money.",
+    "[[t:It is devnet test SOL with no monetary value. Nothing here is real money.]][[m:This is real money and you can lose your entry. Play only what you can afford to lose.]]",
   ],
 };
 
@@ -209,6 +214,11 @@ export const replayCopy: ReplayCopy = {
     deathsTitle: "Eliminations (tap one to jump there)", deathLine: "{a} was eliminated by {b}", byZone: "the safe zone", byWall: "the edge of the world",
     recordHd: "Save video (HD)", recStop: "Stop and save", recording: "Recording in HD, keep this tab open...", recSaved: "Video ready.", recSave: "Download video", recUnsupported: "This browser cannot record video. Try Chrome, Edge or Safari.", recMark: "goshi.app · every match can be checked",
     noDeaths: "Nobody was eliminated.", youTag: "you",
+    interactiveShort: "Interactive file",
+    markPlayer: "\u2605 Mark", unmarkPlayer: "\u2605 Unmark",
+    tapHint: "Tap a player on the map to follow them. Tap the same one again to mark them with a gold ring.",
+    downloadInteractive: "Download the interactive replay (.html, works offline)", preparingFile: "Preparing the file...", downloadFailed: "Could not prepare the file. Try again.",
+    standaloneNote: "Interactive replay: the match, the records and the viewer are all inside this file. Nothing is sent anywhere.",
   },
   paint: { you: "you", protectedHint: "Protected {s}", backToZone: "Back to the safe zone ({n})", countdown: "Get ready", finalZone: "Final zone", nextZone: "Next zone", nitro: "Nitro", mass: "Mass" },
   verifyLink: "Verify this match",
@@ -233,6 +243,9 @@ export const matchesCopy: MatchesCopy = {
   players: "{n} players", winner: "Winner {w}", loadMore: "Show older matches", loading: "Loading matches...",
   empty: "No matches here yet. They appear when a room closes on chain.", error: "Could not load the matches. Try again in a moment.",
   refresh: "Refresh", shown: "{n} matches shown", searchLink: "Looking for one in particular? Search by wallet, room or transaction.",
+  tvStart: "Watch all in a row", tvNext: "Next match", tvExit: "Exit", tvCount: "Match {i} of {n}", tvEmpty: "There are no matches to play yet.",
+  tvMusicOn: "Music on", tvMusicOff: "Music off", liveBadge: "LIVE", liveStart: "Start the live show",
+  liveLines: ["Play free right now, no wallet needed: {domain}", "Every match is public and replayable", "Open source skill games on Solana", "Think you can win the arena? Come and prove it"],
 };
 
 export const matchesPage: Page = {

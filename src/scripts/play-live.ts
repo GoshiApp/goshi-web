@@ -1,3 +1,4 @@
+import { youWord } from "../lib/play/staff.ts";
 // The live part of the play page: the game server connection, creating rooms, test funds, the lobby, the VS offer,
 // the arena canvas and the result. Loaded lazily by play.ts the first time a wallet connects.
 import { fill, node } from "../lib/play/dom.ts";
@@ -47,6 +48,8 @@ export interface Live {
   devBots(): boolean;
   fillWithBots(roomId: string): void;
   openGame(roomId: string): void;
+  /** Takes the player back into a match they are seated in (a reload, the same link, another tab). No-op when already in it. */
+  resume(roomId: string): void;
   /** Call after the person took a seat on the network: enters the room on the server. */
   joined(roomId: string): void;
   /** Asks the server for a room with this entry (lamports): the fullest waiting one, or a new one. */
@@ -194,6 +197,62 @@ export function createLive(host: LiveHost): Live {
       void host.refreshRooms();
     });
     c.on("invite", (m) => { window.dispatchEvent(new CustomEvent("goshi-invite", { detail: m })); });
+    const say = (text: string, ms = 9000, cls = "match-toast") => {
+      const el = document.createElement("div");
+      el.className = cls;
+      el.setAttribute("role", "status");
+      el.textContent = text;
+      // In full screen only the full screen element is drawn: a notice outside it would never be seen.
+      (document.fullscreenElement ?? document.body).append(el);
+      if (ms > 0) setTimeout(() => el.remove(), ms);
+    };
+    // A match whose messages stop (a dropped message, a socket that is alive but dead, the hand-over from the minute of frenzy
+    // to the arena that never came) must not leave the player in front of a still screen: ask the server for the match again.
+    let lastGameMsgAt = Date.now();
+    let matchRunning = false;
+    c.on("message", (m) => {
+      if (m.t === "snap" || m.t === "fsnap" || m.t === "fend") lastGameMsgAt = Date.now();
+      if (m.t === "start") { matchRunning = true; lastGameMsgAt = Date.now(); }
+      if (m.t === "end" || m.t === "matchOver") matchRunning = false;
+    });
+    const watchdog = setInterval(() => {
+      if (client !== c) { clearInterval(watchdog); return; }
+      if (!matchRunning || !currentRoom || document.visibilityState === "hidden") return;
+      if (Date.now() - lastGameMsgAt < 4000) return;
+      lastGameMsgAt = Date.now();
+      host.log("watchdog: no game messages, asking again", currentRoom);
+      try { c.enter(currentRoom); } catch { /* the socket is closed: the reconnect logic takes over */ }
+    }, 2000);
+    c.on("peerBack", (m) => {
+      const me = host.wallet.current.status === "connected" ? host.wallet.current.address : null;
+      if (m.roomId !== currentRoom || m.wallet === me) return;
+      say(host.t.arenaState.peerBack.replace("{player}", shortAddress(m.wallet)), 5000);
+    });
+    // The match is over and the prizes are being sent: say so at once, so the board never just stands still.
+    c.on("matchOver", (m) => {
+      if (m.roomId !== currentRoom) return;
+      document.querySelectorAll(".match-over").forEach((n) => n.remove());
+      const me = host.wallet.current.status === "connected" ? host.wallet.current.address : null;
+      const mine = m.ranking.find((r) => r.w === me);
+      const text = mine
+        ? host.t.arenaState.matchOverRank.replace("{rank}", String(mine.rank)).replace("{n}", String(m.ranking.filter((r) => r.role === "paid").length))
+        : host.t.arenaState.matchOver;
+      say(text, 0, "match-toast match-over");
+    });
+    c.on("peerLeft", (m) => {
+      const me = host.wallet.current.status === "connected" ? host.wallet.current.address : null;
+      if (m.roomId !== currentRoom || m.wallet === me) return;
+      // Said out loud on the board, so a player never wonders why the other body stopped.
+      const el = document.createElement("div");
+      el.className = "match-toast";
+      el.setAttribute("role", "status");
+      const who = shortAddress(m.wallet);
+      el.textContent = m.graceSeconds && m.graceSeconds > 0
+        ? host.t.arenaState.peerLeftGrace.replace("{player}", who).replace("{s}", String(m.graceSeconds))
+        : host.t.arenaState.peerLeft.replace("{player}", who);
+      (document.fullscreenElement ?? document.body).append(el);
+      setTimeout(() => el.remove(), 9000);
+    });
     c.on("botsJoining", (m) => {
       if (!testNetwork) return;
       setText(createMsg, fill(t.bots.joining, { id: m.roomId, paid: m.paid, free: m.free }));
@@ -306,6 +365,9 @@ export function createLive(host: LiveHost): Live {
   }
 
   function onEnd(m: End) {
+    document.querySelectorAll(".match-over").forEach((n) => n.remove());
+    // The result card lives outside the full screen board: leave full screen so it is on screen, not behind a still board.
+    window.dispatchEvent(new Event("goshi-leave-fs"));
     lastLobby = null;
     shell.roomLobby(null);
     shell.roomEnd(m, () => showResult(m));
@@ -404,7 +466,7 @@ export function createLive(host: LiveHost): Live {
 
   function showResult(m: End) {
     const mine = host.wallet.current.status === "connected" ? host.wallet.current.address : "";
-    const name = (w: string) => (w === mine ? `${shortAddress(w)} (${t.game.you})` : shortAddress(w));
+    const name = (w: string) => (w === mine ? `${shortAddress(w)} (${youWord(mine, t.game.you)})` : shortAddress(w));
     const lam = (v: string) => `${host.sol(BigInt(v))} ${host.unitSol}`;
     const kids: Node[] = [];
     const podiumWallets = m.payout.podium.map((p) => p.w);
@@ -578,6 +640,10 @@ export function createLive(host: LiveHost): Live {
       c.fillWithBots(roomId, Math.max(0, 10 - paid), Math.max(0, 3 - free));
     },
     openGame: enter,
+    resume(roomId) {
+      if (currentRoom === roomId && shell.source === "room") return;
+      enter(roomId);
+    },
     joined(roomId) {
       enter(roomId);
     },

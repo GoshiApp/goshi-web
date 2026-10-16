@@ -59,6 +59,9 @@ export interface ClientEvents {
   roomCreated: Extract<ServerMsg, { t: "roomCreated" }>;
   duelTx: Extract<ServerMsg, { t: "duelTx" }>;
   invite: Extract<ServerMsg, { t: "invite" }>;
+  peerLeft: Extract<ServerMsg, { t: "peerLeft" }>;
+  peerBack: Extract<ServerMsg, { t: "peerBack" }>;
+  matchOver: Extract<ServerMsg, { t: "matchOver" }>;
   quickRoom: Extract<ServerMsg, { t: "quickRoom" }>;
   passOffer: Extract<ServerMsg, { t: "passOffer" }>;
   passTaken: Extract<ServerMsg, { t: "passTaken" }>;
@@ -70,6 +73,8 @@ export interface ClientEvents {
   entered: Extract<ServerMsg, { t: "entered" }>;
   lobby: Extract<ServerMsg, { t: "lobby" }>;
   start: Extract<ServerMsg, { t: "start" }>;
+  live: Extract<ServerMsg, { t: "live" }>;
+  skins: Extract<ServerMsg, { t: "skins" }>;
   snap: Extract<ServerMsg, { t: "snap" }>;
   fsnap: Extract<ServerMsg, { t: "fsnap" }>;
   fend: Extract<ServerMsg, { t: "fend" }>;
@@ -310,6 +315,9 @@ export class ServerClient {
       case "roomCreated": this.emit("roomCreated", msg); return;
       case "duelTx": this.emit("duelTx", msg); return;
       case "invite": this.emit("invite", msg); return;
+      case "peerLeft": this.emit("peerLeft", msg); return;
+      case "peerBack": this.emit("peerBack", msg); return;
+      case "matchOver": this.emit("matchOver", msg); return;
       case "quickRoom": this.emit("quickRoom", msg); return;
       case "passOffer": this.emit("passOffer", msg); return;
       case "passTaken": this.emit("passTaken", msg); return;
@@ -321,6 +329,8 @@ export class ServerClient {
       case "entered": this.emit("entered", msg); return;
       case "lobby": this.emit("lobby", msg); return;
       case "start": this.emit("start", msg); return;
+      case "live": this.emit("live", msg); return;
+      case "skins": this.emit("skins", msg); return;
       case "snap": this.emit("snap", msg); return;
       case "fsnap": this.emit("fsnap", msg); return;
       case "fend": this.emit("fend", msg); return;
@@ -417,7 +427,11 @@ export class ServerClient {
   vs(roomId: string, accept: boolean): boolean { return this.send({ t: "vs", roomId, accept }); }
   faucet(): boolean { return this.send({ t: "faucet" }); }
   /** Starts a free practice match against bots (no wallet, no money). `name` is cleaned and cut by the server. */
-  practice(name: string, wallet?: string): boolean { return this.send({ t: "practice", name, ...(wallet ? { wallet } : {}) }); }
+  liveWatch(): boolean { return this.send({ t: "live_watch" }); }
+  liveJoin(name?: string, wallet?: string, skin?: string): boolean { return this.send({ t: "live_join", ...(name ? { name } : {}), ...(wallet ? { wallet } : {}), ...(skin ? { skin } : {}) }); }
+  liveLeave(): boolean { return this.send({ t: "live_leave" }); }
+  afk(on: boolean): boolean { return this.send({ t: "afk", on }); }
+  practice(name: string, wallet?: string, difficulty?: "easy" | "medium" | "hard" | "insane", mode?: "survival" | "show"): boolean { return this.send({ t: "practice", name, ...(wallet ? { wallet } : {}), ...(difficulty ? { difficulty } : {}), ...(mode ? { mode } : {}) }); }
   watch(roomId: string): boolean { return this.send({ t: "watch", roomId }); }
   enter(roomId: string): boolean { this.sendSkin(); return this.send({ t: "enter", roomId }); }
   leave(roomId: string): boolean { return this.send({ t: "leave", roomId }); }

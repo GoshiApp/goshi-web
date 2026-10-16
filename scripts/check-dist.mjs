@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
-const ORIGIN = process.env.PUBLIC_TARGET === "test" ? "https://test.goshi.app" : "https://goshi.app";
+const ORIGIN = process.env.PUBLIC_TARGET === "test" ? (process.env.PUBLIC_LAB === "1" ? "https://lab.goshi.app" : "https://test.goshi.app") : "https://goshi.app";
 const errors = [];
 const fail = (where, msg) => errors.push(`${where}: ${msg}`);
 

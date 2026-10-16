@@ -99,7 +99,7 @@ test("sound is off by default, remembers the choice and plays only after it is s
   assert.equal(s.play("eat"), false, "rate limited");
   t += 5;
   assert.equal(s.play("eat"), true);
-  assert.equal(a.calls.filter((c) => c === "osc").length, 2);
+  assert.equal(a.calls.filter((c) => c === "osc").length, 4, "each eat is a note plus its octave");
   // A new page load restores the choice.
   const s2 = new ArenaSound({ storage: store, context: () => a.ctx, now: () => 0 });
   assert.equal(s2.enabled, true);

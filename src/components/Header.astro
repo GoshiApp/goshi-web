@@ -8,8 +8,8 @@ import Mark from "./Mark.astro";
 interface Props { lang: Lang; route?: RouteKey; switchHref?: string }
 const { lang, route, switchHref } = Astro.props;
 const ui = copy[lang].ui;
-const main: (RouteKey & keyof typeof ui.nav)[] = ["games", "matches", "ideas", "how", "token", "security", "opensource"];
-const more: (RouteKey & keyof typeof ui.nav)[] = ["roadmap", "faq", "risks", "contribute", "support"];
+const main: (RouteKey & keyof typeof ui.nav)[] = site.lab ? ["matches", "ideas"] : ["games", "matches", "ideas", "how", "token", "security", "opensource"];
+const more: (RouteKey & keyof typeof ui.nav)[] = site.lab ? [] : ["roadmap", "faq", "risks", "contribute", "support"];
 const current = (k: RouteKey) => (route === k ? "page" : undefined);
 const other = otherLang(lang);
 ---
@@ -17,19 +17,21 @@ const other = otherLang(lang);
   <div class="wrap">
     <a class="brand" href={path(lang, "home")} aria-label={ui.homeAria}>
       <Mark size={38} class="brand-logo" />
-      <span>Goshi</span>
+      <span>{site.lab ? "Goshi Lab" : "Goshi"}</span>
     </a>
     <nav class="nav" id="site-nav" aria-label={ui.primaryNavLabel}>
       {main.map((k) => <a href={path(lang, k)} aria-current={current(k)}>{ui.nav[k]}</a>)}
-      <div class="more" data-more>
+      {more.length > 0 && <div class="more" data-more>
         <button type="button" class="more-btn" aria-expanded="false" aria-controls="more-pop">{ui.nav.more}<Icon name="arrow" size={14} /></button>
         <div class="pop" id="more-pop">
           {more.map((k) => <a href={path(lang, k)} aria-current={current(k)}>{ui.nav[k]}</a>)}
+          <a href="https://test.goshi.app">{ui.nav.practiceSite}</a>
+          <a href="https://lab.goshi.app">{ui.nav.labSite}</a>
         </div>
-      </div>
+      </div>}
     </nav>
     <div class="tools">
-      {site.play.enabled && <WalletChip lang={lang} />}
+      {site.play.enabled && !site.lab && <WalletChip lang={lang} />}
       <a class="btn btn-gold btn-sm hide-sm" href={path(lang, "play")} aria-current={current("play")}>{ui.nav.play}</a>
       <button type="button" class="pill theme-toggle" id="theme-toggle" aria-label={ui.themeToggle}>
         <span class="moon"><Icon name="moon" /></span><span class="sun"><Icon name="sun" /></span>

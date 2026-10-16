@@ -1,6 +1,7 @@
 // "The minute of frenzy", client side: draws the individual 60 second phase and reads the pointer, touch (floating
 // joystick) and keyboard. The game is simulated ONLY on the server; this file shows what the server sends (fsnap) with a
 // small interpolation, and sends the direction and the nitro bit at 20 Hz at most.
+import { drawYouMarker } from "./you-marker.ts";
 import type { FrenzyInfo, FrenzyEnd, FrenzySnap } from "./protocol.ts";
 import { COINS } from "./coins.ts";
 import { selectedSkin, skinById } from "./skins.ts";
@@ -223,8 +224,11 @@ export class FrenzyView {
 
   private resize() {
     if (!this.canvas || !this.host) return;
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
     const r = this.host.getBoundingClientRect();
+    // A big screen at 2x is 8 million pixels to repaint 60 times a second: the canvas is held to about 2.5 million, which looks
+    // the same at the size the game is drawn and keeps the frame rate up.
+    const budget = 2_500_000;
+    this.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1, Math.sqrt(budget / Math.max(1, r.width * r.height))));
     this.W = Math.max(200, Math.round(r.width * this.dpr));
     this.H = Math.max(200, Math.round(r.height * this.dpr));
     this.canvas.width = this.W;
@@ -276,10 +280,16 @@ export class FrenzyView {
     // lasers
     for (const l of this.lasers) {
       const on = this.laserOn(l);
+      const lx = sx(l.x), ly = sy(l.y), lw = Math.max(2, l.w * scale), lh = Math.max(2, l.h * scale);
+      if (lx > W || ly > H || lx + lw < 0 || ly + lh < 0) continue;
+      if (on && !this.deps.reduced) {
+        // The glow is a wider, fainter bar under the beam: a blur filter on every laser every frame was the slow part.
+        g.fillStyle = "rgba(255,59,107,0.28)";
+        const grow = 7 * dpr;
+        g.fillRect(lx - grow, ly - grow, lw + grow * 2, lh + grow * 2);
+      }
       g.fillStyle = on ? "#ff3b6b" : "rgba(255,59,107,0.18)";
-      if (on && !this.deps.reduced) { g.shadowColor = "#ff3b6b"; g.shadowBlur = 14 * dpr; }
-      g.fillRect(sx(l.x), sy(l.y), Math.max(2, l.w * scale), Math.max(2, l.h * scale));
-      g.shadowBlur = 0;
+      g.fillRect(lx, ly, lw, lh);
     }
     // gems
     const margin = 40;
@@ -319,6 +329,7 @@ export class FrenzyView {
     }
     g.strokeStyle = "#0b1130"; g.lineWidth = Math.max(1.2, R * 0.07); g.lineCap = "round";
     g.beginPath(); g.arc(cx + fx * R * 0.76, cy + fy * R * 0.76, R * 0.17, heading + Math.PI * 0.55, heading + Math.PI * 1.45); g.stroke();
+    drawYouMarker(g, cx, cy, R, (this.info.ms - this.timeLeftMs) / 1000, dpr);
     // floaters
     g.font = `800 ${Math.round(14 * dpr)}px system-ui, sans-serif`;
     g.textAlign = "center";
@@ -371,18 +382,22 @@ export class FrenzyView {
 
     // HUD
     const pad = 12 * dpr;
+    // The painted HUD of the minute.
+    const hudTop = 0;
+    // The full screen button is at the top left: the numbers start to its right.
+    const padL = pad + 44 * dpr;
     g.textAlign = "left";
     g.textBaseline = "top";
     g.fillStyle = "#fff";
     g.font = `800 ${Math.round(22 * dpr)}px system-ui, sans-serif`;
     const sec = Math.ceil(this.timeLeftMs / 1000);
-    g.fillText(`${s.title}  ${sec}s`, pad, pad);
+    g.fillText(`${s.title}  ${sec}s`, padL, pad + hudTop);
     g.font = `700 ${Math.round(15 * dpr)}px system-ui, sans-serif`;
     g.fillStyle = "#ffe08a";
-    g.fillText(`${s.mass} ${Math.round(this.cur.m)}   ${s.rank} ${this.rank || "-"}`, pad, pad + 28 * dpr);
+    g.fillText(`${s.mass} ${Math.round(this.cur.m)}   ${s.rank} ${this.rank || "-"}`, padL, pad + hudTop + 28 * dpr);
     if (this.cur.stun > 0) {
       g.fillStyle = "#ff8fa3";
-      g.fillText(s.stun, pad, pad + 50 * dpr);
+      g.fillText(s.stun, padL, pad + hudTop + 50 * dpr);
     }
     // time bar
     g.fillStyle = "rgba(255,255,255,0.12)";

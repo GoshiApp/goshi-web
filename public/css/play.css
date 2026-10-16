@@ -300,3 +300,51 @@ html.has-pseudo-fs .game-canvas.is-pseudo-fs { position: fixed !important; inset
 .dead-min { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); font-weight: 900; cursor: pointer; line-height: 1; }
 .dead-overlay.min > :not(.dead-head) { display: none; }
 .dead-overlay p { font-size: 0.85rem; }
+
+/* A match in progress: the page does not bounce or scroll under the board, and a stray swipe does not take the player away. */
+html.match-lock, html.match-lock body { overscroll-behavior: none; }
+html.match-lock .game-canvas, html.match-lock .game-canvas * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.match-return { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 80; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
+.match-toast { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 90; max-width: min(92vw, 520px); padding: 10px 14px; border-radius: 12px; background: rgba(12, 16, 40, 0.94); border: 1px solid var(--gold); color: var(--ink); font-weight: 700; text-align: center; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
+
+.match-over { top: auto; bottom: 90px; border-color: var(--mint, #4ade80); }
+.invite-sheet { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 16px; background: rgba(4, 7, 22, 0.78); }
+.invite-card { width: min(94vw, 420px); padding: 22px 18px; border-radius: 16px; background: var(--card, #0f1530); border: 1px solid var(--gold); text-align: center; display: grid; gap: 12px; }
+.invite-card h3 { margin: 0; }
+.invite-card .btn-row { display: grid; gap: 10px; }
+.invite-card .btn { width: 100%; min-height: 52px; }
+
+/* Focus mode: only the game, and the tick box that must be accepted. Everything else is hidden, not removed. */
+.focus-hidden { display: none !important; }
+.focus-exit { position: fixed; top: 10px; right: 10px; z-index: 70; }
+html.play-focus .arena-card > .eyebrow, html.play-focus .arena-card > h2, html.play-focus .arena-card > p:not(.play-msg) { display: none; }
+
+/* Phone portrait, full screen: the HTML header line sits under the full screen button and leaves the right column (map, top list) free. */
+.fs-hud { left: 10px !important; top: 52px !important; max-width: calc(100% - 190px); font-size: 0.8rem; line-height: 1.25; white-space: normal; }
+.game-canvas.is-frenzy .fs-hud { display: none !important; }
+/* The elimination card never leaves the screen. */
+.game-canvas .dead-overlay { box-sizing: border-box; left: auto; right: 10px; width: min(300px, calc(100% - 20px)); max-width: calc(100% - 20px); overflow: hidden; }
+.dead-overlay * { max-width: 100%; box-sizing: border-box; }
+.dead-overlay .btn { white-space: normal; }
+/* "Show everything" sits low, away from the header and its wallet chip. */
+.focus-exit { top: auto; bottom: 12px; right: auto; left: 12px; }
+
+.invite-sure { display: flex; gap: 10px; align-items: flex-start; text-align: left; font-size: 0.85rem; }
+.invite-sure input { margin-top: 3px; width: 20px; height: 20px; flex: none; }
+
+/* The result of a match, shown over the full screen board with a soft fade instead of throwing the person out of it. */
+.game-canvas.has-result > .result { position: absolute; inset: 0; z-index: 30; margin: 0; padding: 6vh 6vw; overflow: auto; border: 0; border-radius: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  background: rgba(5, 8, 24, .78); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); animation: result-in .45s ease-out both; }
+.game-canvas.has-result > .result > * { max-width: 560px; width: 100%; }
+.game-canvas.has-result > .result .result-list { text-align: left; }
+@keyframes result-in { from { opacity: 0; transform: scale(1.02); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .game-canvas.has-result > .result { animation: none; } }
+
+/* Leave a practice match: a button on the board itself, bottom left. */
+.game-canvas .fs-leave { position: absolute; left: 10px; bottom: 10px; z-index: 25; }
+
+/* Difficulty of the practice bots. */
+.play-now-diff { display: grid; gap: 4px; font-weight: 800; color: var(--muted); font-size: 0.9rem; }
+.play-now-diff select { min-height: 56px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--line-strong); background: var(--surface-solid); color: var(--ink); font: inherit; font-weight: 700; }
+.play-now-diff select:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }

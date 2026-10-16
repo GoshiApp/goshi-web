@@ -19,6 +19,9 @@ export interface PlayConfig {
   liquidityWallet: string;
   /** The play server (WebSocket). ws:// only for localhost, wss:// everywhere else. Its origin must be in connect-src. */
   serverUrl: string;
+  /** Practice and the live arena can also run on servers in other regions (the person picks, or the lowest ping is used).
+   *  The rooms with entries always go to serverUrl. Each origin must be in connect-src. */
+  regions?: { id: string; url: string }[];
   /** The token the games use. The symbol is shown everywhere, so a token of your own only needs these two values. */
   token: { symbol: string; name: string };
   /** true only once an external firm has audited the contract and the server. While false the page says it is not audited. */

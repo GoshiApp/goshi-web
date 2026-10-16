@@ -33,6 +33,8 @@ export const ui: UI = {
     security: "Seguridad",
     opensource: "Comunidad",
     more: "Más",
+    practiceSite: "Sitio de práctica",
+    labSite: "Laboratorio",
     play: "Jugar",
     roadmap: "Hoja de ruta",
     faq: "Preguntas",
@@ -76,7 +78,7 @@ export const ui: UI = {
   noindexTitle: "Goshi",
   ogAlt: "Goshi: juegos de habilidad de código abierto en Solana",
   ticker: {
-    maintenance: { soon: "Mantenimiento programado a las {time}. Hasta entonces todo funciona.", draining: "Mantenimiento a las {time}: ya no se abren partidas nuevas. Las que están en curso terminan con normalidad.", down: "En mantenimiento hasta las {time}. Vuelve en un rato." },
+    maintenance: { soon: "Mantenimiento programado a las {time}. Hasta entonces todo funciona.", draining: "Mantenimiento a las {time}: ya no se abren partidas nuevas. Las que están en curso terminan con normalidad.", down: "En mantenimiento. Estimamos volver hacia las {time} (hora de España)." },
     label: "En vivo",
     visits: "Visitantes",
     wallets: "Con billetera",

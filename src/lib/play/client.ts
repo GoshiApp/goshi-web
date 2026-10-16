@@ -6,7 +6,7 @@
 // What it does NOT do: create rooms, finalize, cancel or run the swap. Those need the platform authority key and run on a server.
 
 import { Connection, PublicKey, Transaction } from "@solana/web3.js";
-import { TokenAccountNotFoundError, getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, TokenAccountNotFoundError, getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { GoshiEscrow, ROOM_LEN, decodeConfig, decodeRoom, type RoomAccount } from "./escrow-native.ts";
 import { PlayError, classifyError, txErrorText } from "./errors.ts";
 import { canJoinFree, canJoinPaid, sortRooms, type RoomView } from "./rooms.ts";
@@ -125,10 +125,21 @@ export class PlayClient {
     return r ? toView(r) : null;
   }
 
+  private tokenProgramId: PublicKey | null = null;
+  /** The token program that owns the $GOSHI mint: the classic one or Token-2022 (what pump.fun creates). Read once. */
+  private async tokenProgram(): Promise<PublicKey> {
+    if (this.tokenProgramId) return this.tokenProgramId;
+    const info = await this.connection.getAccountInfo(this.mint, "confirmed");
+    if (!info) return TOKEN_PROGRAM_ID;
+    this.tokenProgramId = info.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+    return this.tokenProgramId;
+  }
+
   /** The wallet's $GOSHI balance in base units (its associated token account). 0n when it has none. */
   async getGoshiBalance(owner: PublicKey): Promise<bigint> {
     try {
-      return (await getAccount(this.connection, getAssociatedTokenAddressSync(this.mint, owner), "confirmed")).amount;
+      const program = await this.tokenProgram();
+      return (await getAccount(this.connection, getAssociatedTokenAddressSync(this.mint, owner, false, program), "confirmed", program)).amount;
     } catch (e) {
       if (e instanceof TokenAccountNotFoundError) return 0n;
       throw e;
@@ -167,10 +178,11 @@ export class PlayClient {
     const chain = await this.verifyConfig();
     const room = await this.fetchRoom(roomId);
     if (!room) throw new PlayError("roomGone");
-    const playerToken = getAssociatedTokenAddressSync(this.mint, wallet.publicKey);
+    const program = await this.tokenProgram();
+    const playerToken = getAssociatedTokenAddressSync(this.mint, wallet.publicKey, false, program);
     let balance: bigint;
     try {
-      balance = (await getAccount(this.connection, playerToken, "confirmed")).amount;
+      balance = (await getAccount(this.connection, playerToken, "confirmed", program)).amount;
     } catch (e) {
       if (e instanceof TokenAccountNotFoundError) throw new PlayError("noTokenAccount");
       throw e;

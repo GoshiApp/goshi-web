@@ -9,6 +9,10 @@ import { copy } from "../../content";
 import { LANGS, ROUTE_KEYS, SLUGS, type Lang, type RouteKey } from "../../lib/i18n";
 import { site } from "../../site";
 import { isMainnet } from "../../lib/play/config";
+import LabHome from "../../components/LabHome.astro";
+import { lab } from "../../content/lab";
+
+const LAB_ROUTES = new Set(["home", "play", "matches", "ideas", "replay", "profile", "verify", "invite"]);
 
 export const getStaticPaths = (() =>
   LANGS.flatMap((lang) =>
@@ -24,7 +28,19 @@ const c = copy[lang];
 const noindex = route === "play" && !isMainnet(site.play.cluster);
 const page = route === "home" ? null : c.pages[route as Exclude<RouteKey, "home">];
 ---
-{page === null ? (
+{site.lab && route === "home" ? (
+  <Base lang={lang} route="home" title={lab[lang].title} description={lab[lang].description} noindex>
+    <LabHome lang={lang} />
+  </Base>
+) : site.lab && !LAB_ROUTES.has(route) ? (
+  <Base lang={lang} route={route} title={lab[lang].elsewhereTitle} description={lab[lang].elsewhereText} noindex>
+    <section class="lab-hero"><div class="wrap">
+      <h1>{lab[lang].elsewhereTitle}</h1>
+      <p class="lab-lead">{lab[lang].elsewhereText}</p>
+      <p class="btn-row"><a class="btn btn-gold" href="https://goshi.app">{lab[lang].elsewhereLink}</a></p>
+    </div></section>
+  </Base>
+) : page === null ? (
   <Base lang={lang} route="home" title={c.home.title} description={c.home.description}>
     <Hero lang={lang} />
     <MeetGoshi lang={lang} />
@@ -32,7 +48,15 @@ const page = route === "home" ? null : c.pages[route as Exclude<RouteKey, "home"
   </Base>
 ) : (
   <Base lang={lang} route={route} title={page.title} description={page.description} noindex={noindex}>
-    <PageHead lang={lang} page={page} route={route} />
+    {site.lab && route === "play" ? (
+      <section class="lab-hero"><div class="wrap">
+        <p class="lab-badge">LAB</p>
+        <h1>{lab[lang].playH1}</h1>
+        <p class="lab-lead">{lab[lang].playLead}</p>
+      </div></section>
+    ) : (
+      <PageHead lang={lang} page={page} route={route} />
+    )}
     <Blocks lang={lang} blocks={page.blocks} />
   </Base>
 )}

@@ -1,17 +1,18 @@
-// Reads a match record ("GA\x01", the file "Download the full match record") and plays it again in the browser with the
+// Reads a match record ("GA\x01" or "GA\x02": the last byte is the version of the rules, the file "Download the full match record") and plays it again in the browser with the
 // same rules as the server (arena-sim.ts). Nothing here talks to a server: the file and the rules are all it needs.
 // Format: seed u32 | matchMs u32 | shrinkStartMs u32 | nPlayers u8 | per player: wallet length u8, wallet, role u8, bot u8, mass u16 (x10) |
 // nEntries u32 | per entry: tick u16, player index u8, angle u8, boost u8.
-import { Arena, ARENA, bodyPoints, bodyRadius, type Role } from "./arena-sim.ts";
+import { Arena, ARENA, AWAY_PROTECT_S, BACK_PROTECT_S, bodyPoints, bodyRadius, type Role, type RulesVersion } from "./arena-sim.ts";
 import type { Orb, PlayerSnap, ZoneNow } from "./protocol.ts";
 
 export interface RecordPlayer { w: string; n: string; role: Role; bot: boolean; m: number }
-export interface MatchRecord { seed: number; matchMs: number; shrinkStartMs: number; players: RecordPlayer[]; log: [number, number, number, number][] }
+export interface MatchRecord { seed: number; matchMs: number; shrinkStartMs: number; players: RecordPlayer[]; log: [number, number, number, number][]; /** The version of the rules it was played with. */ rules: RulesVersion }
 
 export function decodeRecord(bytes: Uint8Array): MatchRecord {
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2]);
-  if (magic !== "GA\u0001") throw new Error("not-arena-record");
+  if (magic !== "GA\u0001" && magic !== "GA\u0002") throw new Error("not-arena-record");
+  const rules: RulesVersion = magic === "GA\u0001" ? 1 : 2;
   let o = 3;
   const seed = v.getUint32(o); o += 4;
   const matchMs = v.getUint32(o); o += 4;
@@ -34,7 +35,7 @@ export function decodeRecord(bytes: Uint8Array): MatchRecord {
     log.push([v.getUint16(o), v.getUint8(o + 2), v.getUint8(o + 3), v.getUint8(o + 4)]);
     o += 5;
   }
-  return { seed, matchMs, shrinkStartMs, players, log };
+  return { seed, matchMs, shrinkStartMs, players, log, rules };
 }
 
 export const TICK_S = 1 / ARENA.tickRate;
@@ -59,7 +60,7 @@ export class Replay {
   }
   reset() {
     const r = this.rec;
-    this.arena = new Arena(r.seed, r.players, { matchMs: r.matchMs, shrinkStartMs: r.shrinkStartMs });
+    this.arena = new Arena(r.seed, r.players, { matchMs: r.matchMs, shrinkStartMs: r.shrinkStartMs, rules: r.rules });
     r.players.forEach((p, i) => { this.arena.players[i].m = p.m; this.arena.players[i].peak = p.m; });
     this.tick = 0;
     this.k = 0;
@@ -68,7 +69,8 @@ export class Replay {
     this.lastDeaths = [];
     this.idx = new Map(this.arena.orbs.map((o) => [o.id, o]));
   }
-  get done() { return this.arena.finished() || this.tick >= this.totalTicks; }
+  // The arena sums its own clock like the server did, so it can take one tick more than matchMs / TICK_S: trust finished(), cap only as a safety.
+  get done() { return this.arena.finished() || this.tick > this.totalTicks + 5; }
   /** Plays one tick. Returns false when the match is over. */
   step(): boolean {
     if (this.done) return false;
@@ -76,6 +78,8 @@ export class Replay {
     while (this.k < log.length && log[this.k][0] === this.tick) {
       const [, pi, ab, f] = log[this.k++];
       const p = this.arena.players[pi];
+      // Flags 2 and 3 are not steering: the connection dropped (the bot plays, protected) or came back (a few seconds of protection).
+      if (f === 2 || f === 3) { p.auto = f === 2; p.protectUntil = Math.max(p.protectUntil, this.arena.time + (f === 3 ? BACK_PROTECT_S : AWAY_PROTECT_S)); continue; }
       const hd = (ab / 256) * Math.PI * 2;
       p.dx = Math.cos(hd);
       p.dy = Math.sin(hd);

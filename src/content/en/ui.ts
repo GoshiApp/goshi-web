@@ -33,6 +33,8 @@ export const ui: UI = {
     security: "Security",
     opensource: "Community",
     more: "More",
+    practiceSite: "Practice site",
+    labSite: "Lab",
     play: "Play",
     roadmap: "Roadmap",
     faq: "FAQ",
@@ -76,7 +78,7 @@ export const ui: UI = {
   noindexTitle: "Goshi",
   ogAlt: "Goshi: open source skill games on Solana",
   ticker: {
-    maintenance: { soon: "Scheduled maintenance at {time}. Everything works until then.", draining: "Maintenance at {time}: no new matches are opened. Running ones finish normally.", down: "Under maintenance until {time}. Come back in a while." },
+    maintenance: { soon: "Scheduled maintenance at {time}. Everything works until then.", draining: "Maintenance at {time}: no new matches are opened. Running ones finish normally.", down: "Under maintenance. We expect to be back around {time} (Spain time)." },
     label: "Live",
     visits: "Visitors",
     wallets: "With wallet",

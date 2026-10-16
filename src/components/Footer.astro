@@ -12,10 +12,12 @@ const cols: { h: string; keys: RouteKey[] }[] = [
   { h: ui.footer.community, keys: ["opensource", "contribute", "replay", "invite", "support", "privacy", "terms"] },
 ];
 const owner = site.legalName || site.name;
+const isLab = site.lab;
 const SOCIAL_LABEL: Record<string, string> = { x: "X", tiktok: "TikTok", telegram: "Telegram", github: "GitHub", instagram: "Instagram", youtube: "YouTube" };
 const socials = Object.entries(site.social).filter(([, v]) => v);
 ---
 <footer class="site-footer">
+  {isLab ? (<div class="wrap"><p class="muted">Goshi Lab · <a href="https://goshi.app">goshi.app</a> · <a href="https://test.goshi.app">test.goshi.app</a></p></div>) : (<>
   <div class="wrap">
     <div class="foot">
       <div>
@@ -30,6 +32,7 @@ const socials = Object.entries(site.social).filter(([, v]) => v);
         </nav>
       ))}
     </div>
+    <p class="foot-sites"><a href="https://test.goshi.app">{ui.nav.practiceSite}</a> · <a href="https://lab.goshi.app">{ui.nav.labSite}</a></p>
     <ShareBar lang={lang} />
     <div class="foot-bottom">
       <p><strong>{ui.footer.testNotice}</strong></p>
@@ -37,4 +40,5 @@ const socials = Object.entries(site.social).filter(([, v]) => v);
       <p>© {site.year} {owner}. {ui.footer.rights} {ui.footer.noCookies} {ui.footer.trademarks}</p>
     </div>
   </div>
+  </>)}
 </footer>

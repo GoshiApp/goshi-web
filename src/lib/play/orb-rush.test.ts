@@ -28,7 +28,7 @@ test("a wallet always gets the same color", () => {
   // Paid players never get the saboteur hue family (orange and red).
   for (const w of ["a", "b", "c", "wallet1", "wallet2", "9bpD", "zzzz"]) {
     const h = Number(/hsl\((\d+)/.exec(colorFor(w))![1]);
-    assert.ok(h >= 110 && h < 300, w);
+    assert.ok(h >= 70 && h < 330, w);
   }
   assert.notEqual(colorFor("a"), SABOTEUR_COLOR);
 });

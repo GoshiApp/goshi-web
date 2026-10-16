@@ -37,6 +37,7 @@ const ld = route === "home" ? JSON.stringify({
     { "@type": "WebSite", name: site.name, url: site.url, inLanguage: ["es", "en"] },
   ],
 }) : null;
+import { lab } from "../content/lab";
 ---
 <!doctype html>
 <html lang={ui.htmlLang} data-theme="dark">
@@ -77,9 +78,10 @@ const ld = route === "home" ? JSON.stringify({
   </head>
   <body>
     <a class="skip" href="#main">{ui.skip}</a>
+    {site.lab && <div class="lab-band" role="note">{lab[lang].band}</div>}
     <Header lang={lang} route={route} switchHref={switchHref} />
-    <LiveTicker lang={lang} />
-    <LaunchBanner lang={lang} />
+    {!site.lab && <LiveTicker lang={lang} />}
+    {!site.lab && <LaunchBanner lang={lang} />}
     <main id="main" tabindex="-1">
       <slot />
     </main>

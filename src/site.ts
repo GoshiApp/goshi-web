@@ -24,19 +24,19 @@ function withLocalOverride(base: PlayConfig): PlayConfig {
  */
 const playMain: PlayConfig = withLocalOverride({
   enabled: true,
-  cluster: "devnet",
+  cluster: "mainnet-beta",
   /** TODO(owner): a reliable devnet RPC. The public one is rate limited. Its origin must be in connect-src (see above). */
-  rpcUrl: "https://api.devnet.solana.com",
+  rpcUrl: "https://goshi-play-server-mainnet-suxisoytmq-uc.a.run.app/rpc",
   /** The program id of goshi_escrow (from its IDL). TODO(owner): replace if you redeploy under another key. */
-  programId: "7phmG6f5A7g2GB2xMSV1TzCTDJMLMNf8WsBcwWgC4ggE",
+  programId: "BWHy8T5SCpqzLMtjepi6kEdRp9gk8iAVEBaefE3kx4iL",
   /** TODO(owner): the $GOSHI mint (6 decimals). Used for the saboteur holder check. Must be the mint stored in the program config. */
-  goshiMint: "DiAQBixUdJxCNUdY3NyogaBXScgMiCWPeireAtHEHRC8",
+  goshiMint: "AUCKjx3Tw78upSvC2EMp8oTScgMnQL5os3i6uVN5pump",
   /** TODO(owner): the wallet that receives the infrastructure share of the rake (SOL). Must match GameConfig.infra_wallet of the v2 program. */
-  infraWallet: "JD6zGCtMiwRL6UMuP5a7FN465XDCCuhWzHjU8cQAMQHR",
+  infraWallet: "GKYPdKzV5hyeiJ8mEtBTTuGFETevZAwEtoPSSJPWMVxL",
   /** TODO(owner): the wallet that receives the liquidity and community share of the rake (SOL). Must match GameConfig.liquidity_wallet. */
-  liquidityWallet: "CCQnx7EsybugJQvGj2ky9GBRF2eebXXtVeC8zhAiufkt",
+  liquidityWallet: "C2ecRAApptHG7acachGecj1g6vGL9Dk6s6gckPzVkfT3",
   /** The play server (WebSocket). TODO(owner): a wss:// URL once the server is hosted, and add its origin to connect-src in the play page CSP (public/.htaccess and firebase.json, the build checks). */
-  serverUrl: "wss://goshi-play-server-suxisoytmq-uc.a.run.app",
+  serverUrl: "wss://goshi-play-server-mainnet-suxisoytmq-uc.a.run.app",
   /**
    * The token the games use. TODO(owner): the symbol and name of the real token before mainnet. The symbol is used on every page.
    * While the cluster is devnet or testnet the page says "test" before it automatically.
@@ -56,7 +56,11 @@ const playTest: PlayConfig = withLocalOverride({
   goshiMint: "DiAQBixUdJxCNUdY3NyogaBXScgMiCWPeireAtHEHRC8",
   infraWallet: "JD6zGCtMiwRL6UMuP5a7FN465XDCCuhWzHjU8cQAMQHR",
   liquidityWallet: "CCQnx7EsybugJQvGj2ky9GBRF2eebXXtVeC8zhAiufkt",
-  serverUrl: "wss://goshi-play-server-suxisoytmq-uc.a.run.app",
+  serverUrl: "wss://goshi-play-server-suxisoytmq-ew.a.run.app",
+  regions: [
+    { id: "eu", url: "wss://goshi-play-server-suxisoytmq-ew.a.run.app" },
+    { id: "us", url: "wss://goshi-play-server-suxisoytmq-uc.a.run.app" },
+  ],
   token: { symbol: "GOSHI", name: "Goshi" },
   audited: false,
 });
@@ -64,14 +68,30 @@ const playTest: PlayConfig = withLocalOverride({
 
 /** PUBLIC_TARGET=test builds the practice site (test.goshi.app) on devnet. Without it, the build is the main site. */
 const isTest = import.meta.env.PUBLIC_TARGET === "test";
-const play: PlayConfig = isTest ? playTest : playMain;
+/** PUBLIC_LAB=1 (with PUBLIC_TARGET=test) builds the lab site: the test site with its own game server and its own domain. */
+const isLab = isTest && import.meta.env.PUBLIC_LAB === "1";
+const play: PlayConfig = isLab
+  ? {
+      ...playTest,
+      serverUrl: "wss://goshi-play-server-lab-suxisoytmq-ew.a.run.app",
+      regions: [
+        { id: "eu", url: "wss://goshi-play-server-lab-suxisoytmq-ew.a.run.app" },
+        { id: "us", url: "wss://goshi-play-server-lab-suxisoytmq-uc.a.run.app" },
+      ],
+    }
+  : isTest ? playTest : playMain;
 
 export const site = {
   name: "Goshi",
   shortName: "Goshi",
   /** TODO(owner): the final tagline. The copy files carry a working one ("Skill games on Solana, built in the open"). */
-  domain: isTest ? "test.goshi.app" : "goshi.app",
-  url: isTest ? "https://test.goshi.app" : "https://goshi.app",
+  lab: isLab,
+  /** The synthesized sound pack and the music: on every site. */
+  soundPack: true,
+  /** Bot levels in practice: only where there are bots to choose (test and lab); the real game has no bots. */
+  botLevels: isTest,
+  domain: isLab ? "lab.goshi.app" : isTest ? "test.goshi.app" : "goshi.app",
+  url: isLab ? "https://lab.goshi.app" : isTest ? "https://test.goshi.app" : "https://goshi.app",
   /**
    * false: every page carries noindex and robots.txt blocks crawlers. Flip to true
    * only when the legal review (docs/legal-review.md) is done.

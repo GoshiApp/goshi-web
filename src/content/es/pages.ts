@@ -48,7 +48,7 @@ export const games: Page = {
       items: [
         { name: "Orb Rush royale", status: "devnet", text: "[[t:Se puede jugar en la red de pruebas devnet de Solana con SOL de prueba.]][[m:Se puede jugar en Solana mainnet con SOL real.]]", gate: "[[t:Una auditoría del contrato, una revisión legal y una decisión sobre un token en mainnet.]][[m:Una auditoría externa y una revisión legal al día.]]" },
         { name: "Modo VS", status: "devnet", text: "Si una sala no se llena en 5 minutos, de 2 a 9 jugadores de pago pueden jugar una partida de todos contra todos. Todos los jugadores de pago deben aceptar.", gate: "Probado primero en devnet." },
-        { name: "Espectadores y repeticiones", status: "idea", text: "Mirar una partida y repetirla a partir del resultado registrado.", gate: "Un diseño de lo que registra el servidor." },
+        { name: "Espectadores y repeticiones", status: "live", text: "Ver una partida de nuevo desde el punto de vista de cada jugador, exportarla en video y verificarla contra el resultado registrado.", gate: "Cada partida queda registrada y se puede comprobar." },
         { name: "Un segundo juego", status: "idea", text: "Otro juego de habilidad corto para salas con jugadores de pago y saboteadores. El tipo de juego está abierto a que lo proponga la comunidad.", gate: "Una propuesta pública y un prototipo." },
       ],
     },
@@ -589,7 +589,7 @@ export const contribute: Page = {
 
 export const roadmap: Page = {
   title: "Hoja de ruta y cambios",
-  description: "Lo que Goshi ha hecho y lo que viene, con etiquetas de estado honestas: activo en devnet, en diseño, planificado y pendiente de revisión. No se promete ninguna fecha.",
+  description: "Lo que Goshi ha hecho y lo que viene, con etiquetas de estado honestas: activo, en diseño, planificado y pendiente de revisión. No se promete ninguna fecha.",
   eyebrow: "Hoja de ruta",
   h1: "Hoja de ruta y registro de cambios",
   lead: "Las fases tienen condiciones, no fechas. Cada punto dice exactamente en qué estado está.",
@@ -600,14 +600,14 @@ export const roadmap: Page = {
       h2: "Las fases",
       gateLabel: "Condición",
       items: [
-        { name: "Contrato y primer juego en devnet", status: "devnet", text: "El contrato de custodia y Orb Rush funcionan en Solana devnet, con un sitio web para probarlos.", gate: "Funcionando de punta a punta en devnet." },
-        { name: "Repositorio público y licencia", status: "pending", text: "Publicar el código bajo Apache 2.0.", gate: "Un repositorio limpio, sin claves." },
-        { name: "Auditoría de seguridad", status: "planned", text: "Una auditoría independiente del contrato y del servidor, y una decisión sobre la clave que firma los pagos.", gate: "Hallazgos corregidos y publicados." },
+        { name: "Contrato y primer juego", status: "live", text: "El contrato de custodia y Orb Rush funcionan en Solana mainnet (SOL real, entradas pequeñas) y en devnet (práctica gratis, sin dinero real).", gate: "Funcionando de punta a punta y con cada partida verificable por cualquiera." },
+        { name: "Repositorio público y licencia", status: "live", text: "El contrato, el servidor de juego y el sitio web son públicos bajo Apache 2.0 en github.com/GoshiApp.", gate: "Un repositorio limpio, sin claves." },
+        { name: "Auditoría de seguridad", status: "planned", text: "Hay una revisión interna hecha y sus correcciones se están aplicando. Falta una auditoría externa independiente del contrato y del servidor: hasta entonces el contrato NO está auditado externamente.", gate: "Hallazgos corregidos y publicados." },
         { name: "Revisión legal", status: "pending", text: "Edad, regiones, cómo se clasifican los juegos con entrada, avisos sobre el token, términos y privacidad.", gate: "Una opinión escrita para cada país donde se abriría." },
         { name: "Más formas de conectar en el teléfono", status: "idea", text: "Hoy un teléfono se conecta abriendo la página dentro del navegador propio de la billetera. WalletConnect o el Solana Mobile Wallet Adapter podrían permitir que se conecten otras billeteras, si se pueden añadir sin volver pesada la página.", gate: "Una implementación ligera y una revisión de seguridad." },
-        { name: "Proceso comunitario", status: "planned", text: "Propuestas públicas, discusión y votos sobre juegos nuevos.", gate: "Un proceso que exista, documentado y probado." },
+        { name: "Proceso comunitario", status: "planned", text: "El tablero de ideas está abierto: cualquiera puede proponer un juego y votar. Falta escribir un proceso documentado para elegirlos y construirlos.", gate: "Un proceso que exista, documentado y probado." },
         { name: "Más juegos", status: "idea", text: "Juegos nuevos a partir de propuestas de la comunidad, probados primero en devnet.", gate: "Cumplir las reglas que debe cumplir todo juego." },
-        { name: "Una versión en mainnet", status: "idea", text: "Solo si y donde la auditoría y la revisión legal lo permitan. Sin fecha y sin promesa.", gate: "Todas las condiciones anteriores." },
+        { name: "Mainnet", status: "live", text: "Lanzamiento suave: entradas de $0.5 a $5, fondos reales, sin auditoría externa. Juega solo lo que puedas permitirte perder. Subir los límites depende de la auditoría y de la revisión legal.", gate: "La auditoría y la revisión legal deciden cualquier aumento de límites." },
       ],
     },
     {
@@ -620,6 +620,8 @@ export const roadmap: Page = {
         ["2026-10", "Orb Rush y el servidor de juego con autoridad se probaron en local."],
         ["2026-10", "Este sitio web, con la página de juego que conecta una billetera en devnet."],
         ["2026-10", "Contrato v3 en devnet: 88% de premios para los tres mejores jugadores de pago, una bolsa del 2% para saboteadores, puestos con pase entre niveles, el modo VS y el Super Pozo. La arena es una batalla real de cuerpos sólidos."],
+        ["2026-10", "Lanzamiento suave en mainnet (contrato v5): la llave que abre y liquida salas es distinta de la que guarda la bóveda y puede reemplazarla, y cualquiera puede reembolsar una sala de más de 3 horas sin liquidar."],
+        ["2026-10", "Historial público de partidas, repeticiones desde el punto de vista de cada jugador, exportación a video y una página para verificar cada partida."],
       ],
       note: "Las fechas son el mes en que se hizo un cambio, no una promesa sobre el futuro.",
     },

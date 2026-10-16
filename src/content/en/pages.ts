@@ -48,7 +48,7 @@ export const games: Page = {
       items: [
         { name: "Orb Rush royale", status: "devnet", text: "[[t:Playable on the Solana devnet test network with test SOL.]][[m:Playable on Solana mainnet with real SOL.]]", gate: "[[t:A contract audit, a legal review and a decision on a mainnet token.]][[m:An external audit and an up to date legal review.]]" },
         { name: "VS mode", status: "devnet", text: "If a room does not fill in 5 minutes, 2 to 9 paid players can play a one against all match. Every paid player has to accept.", gate: "Tested on devnet first." },
-        { name: "Spectating and replays", status: "idea", text: "Watch a match, and replay it from the recorded result.", gate: "A design for what the server records." },
+        { name: "Spectating and replays", status: "live", text: "Watch a match back from every player's point of view, export it as video and verify it against the recorded result.", gate: "Every match is recorded and checkable." },
         { name: "A second game", status: "idea", text: "A different short skill game for rooms of paid players and saboteurs. The kind of game is open for the community to propose.", gate: "A public proposal and a prototype." },
       ],
     },
@@ -589,7 +589,7 @@ export const contribute: Page = {
 
 export const roadmap: Page = {
   title: "Roadmap and changelog",
-  description: "What Goshi has done and what comes next, with honest status labels: live on devnet, in design, planned and pending review. No dates are promised.",
+  description: "What Goshi has done and what comes next, with honest status labels: live, in design, planned and pending review. No dates are promised.",
   eyebrow: "Roadmap",
   h1: "Roadmap and changelog",
   lead: "Phases have gates, not dates. Each item says exactly where it stands.",
@@ -600,14 +600,14 @@ export const roadmap: Page = {
       h2: "The phases",
       gateLabel: "Gate",
       items: [
-        { name: "Contract and first game on devnet", status: "devnet", text: "The escrow contract and Orb Rush run on Solana devnet, with a website to try them.", gate: "Working end to end on devnet." },
-        { name: "Public repository and license", status: "pending", text: "Publish the code under Apache 2.0.", gate: "A clean repository, with no keys." },
-        { name: "Security audit", status: "planned", text: "An independent audit of the contract and the server, and a decision on the key that signs payouts.", gate: "Findings fixed and published." },
+        { name: "Contract and first game", status: "live", text: "The escrow contract and Orb Rush run on Solana mainnet (real SOL, small entries) and on devnet (free practice, no real money).", gate: "Working end to end, and every match checkable by anyone." },
+        { name: "Public repository and license", status: "live", text: "The contract, the game server and the website are public under Apache 2.0 at github.com/GoshiApp.", gate: "A clean repository, with no keys." },
+        { name: "Security audit", status: "planned", text: "An internal review is done and its fixes are being applied. An independent external audit of the contract and the server is still pending: until then the contract is NOT externally audited.", gate: "Findings fixed and published." },
         { name: "Legal review", status: "pending", text: "Age, regions, how games with entry fees are classified, token disclosures, terms and privacy.", gate: "A written opinion for each country where it would open." },
         { name: "More ways to connect on phones", status: "idea", text: "Today a phone connects by opening the page inside the wallet's own browser. WalletConnect or the Solana Mobile Wallet Adapter could let other wallets connect, if they can be added without making the page heavy.", gate: "A light implementation and a security review." },
-        { name: "Community process", status: "planned", text: "Public proposals, discussion and votes on new games.", gate: "A process that exists, documented and tested." },
+        { name: "Community process", status: "planned", text: "The ideas board is open: anyone can propose a game and vote. A documented process to choose and build them is still to be written.", gate: "A process that exists, documented and tested." },
         { name: "More games", status: "idea", text: "New games from community proposals, tested on devnet first.", gate: "Passing the rules every game must follow." },
-        { name: "A mainnet version", status: "idea", text: "Only if and where the audit and the legal review allow it. No date and no promise.", gate: "All of the gates above." },
+        { name: "Mainnet", status: "live", text: "Soft launch: entries from $0.5 to $5, real funds, not externally audited. Play only what you can afford to lose. Higher limits depend on the audit and the legal review.", gate: "Audit and legal review decide any increase of the limits." },
       ],
     },
     {
@@ -620,6 +620,8 @@ export const roadmap: Page = {
         ["2026-10", "Orb Rush and the authoritative game server run in local testing."],
         ["2026-10", "This website, with the play page that connects a wallet on devnet."],
         ["2026-10", "Contract v3 on devnet: 88% prizes for the top three paid players, a 2% saboteur pool, pass seats between tiers, VS mode and the super pot. The arena is a battle royale of solid bodies."],
+        ["2026-10", "Mainnet soft launch (contract v5): the key that opens and settles rooms is separate from the key that holds the vault and can replace it, and anyone can refund a room that is 3 hours old and unsettled."],
+        ["2026-10", "Public match history, replays from every player's point of view, video export and a verification page for every match."],
       ],
       note: "Dates are the month a change was made, not a promise about the future.",
     },

@@ -105,7 +105,13 @@ export type ClientMsg =
   | { t: "acceptPass"; roomId: string }
   | { t: "fillWithBots"; roomId: string; paid: number; free: number }
   | { t: "faucet" }
-  | { t: "practice"; name: string; wallet?: string }
+  /** The live arena: watch it, take a place (or wait for one), leave. */
+  | { t: "live_watch" }
+  | { t: "live_join"; name?: string; wallet?: string; skin?: string }
+  | { t: "live_leave" }
+  /** The computer plays this body as an elite bot while the person is away (on), or hands it back (off). */
+  | { t: "afk"; on: boolean }
+  | { t: "practice"; name: string; wallet?: string; difficulty?: "easy" | "medium" | "hard" | "insane"; mode?: "survival" | "show" }
   /** The cosmetic skin to wear in paid rooms (a holder skin is checked against the balance). */
   | { t: "skin"; id: string }
   /** A private duel for 2 to 5 players: the winner takes the pot minus a small fee. */
@@ -130,9 +136,17 @@ export type ServerMsg =
     }
   | { t: "authed"; wallet: string; session?: string; expiresAt?: number; viaToken?: boolean }
   | { t: "pong" }
+  /** The skins people wear in the live arena: wallet (or temporary id) -> skin id. */
+  | { t: "skins"; map: Record<string, string> }
+  | { t: "live"; state: "watching" | "queued" | "playing" | "dead"; places: number; humans: number; waiting: number; watching: number; you?: string; pos?: number }
   | { t: "roomCreated"; roomId: string; tx: string }
   | { t: "duelTx"; roomId: string; tx: string; players: number; guests: string[] }
   | { t: "invite"; roomId: string; entryFee: string; host: string; players: number }
+  /** Another player of the match you are watching lost the connection or left the page. */
+  | { t: "peerLeft"; roomId: string; wallet: string; graceSeconds?: number }
+  | { t: "peerBack"; roomId: string; wallet: string }
+  /** The match has just ended: the ranking is known, the prizes are being sent on the network. */
+  | { t: "matchOver"; roomId: string; ranking: RankEntry[] }
   /** The top 3 paid players of a finished room may take the last seat of a higher room that has 9 paid players. */
   | { t: "passOffer"; roomId: string; tierUsd: number; entryFee: string; rank: number; paid: number; expiresInMs: number }
   | { t: "passTaken"; roomId: string; tx: string }
@@ -154,6 +168,8 @@ export type ServerMsg =
   | {
       t: "snap"; roomId: string; tick: number; timeLeftMs: number; zone: ZoneNow; players: PlayerSnap[];
       eatenOrbs: number[]; newOrbs: Orb[]; events: DeathEvent[];
+      /** Survival: seconds to the next airdrop, and the spot where one has just landed. */
+      dropIn?: number; drop?: { x: number; y: number };
     }
   | { t: "end"; roomId: string; mode: Mode; ranking: RankEntry[]; payout: EndPayout; tx: string | null; error: string | null; practice?: boolean; prize?: { lamports: string; tx: string }; proof?: EndProof; record?: { hash: string; bytes: number; entries: number } }
   | { t: "error"; code: string; message: string };
@@ -324,6 +340,16 @@ export function decodeServer(raw: unknown): ServerMsg | null {
         : null;
     case "pong":
       return { t: "pong" };
+    case "skins": {
+      if (!isObj(v.map)) return null;
+      const map: Record<string, string> = {};
+      for (const [k, id] of Object.entries(v.map)) if (typeof id === "string" && k.length <= 64 && id.length <= 24) map[k] = id;
+      return { t: "skins", map };
+    }
+    case "live":
+      return (v.state === "watching" || v.state === "queued" || v.state === "playing" || v.state === "dead") && isNum(v.places) && isNum(v.humans) && isNum(v.waiting)
+        ? { t: "live", state: v.state, places: v.places, humans: v.humans, waiting: v.waiting, watching: isNum(v.watching) ? v.watching : 0, ...(isStr(v.you) ? { you: v.you } : {}), ...(isNum(v.pos) ? { pos: v.pos } : {}) }
+        : null;
     case "passOffer":
       return isStr(v.roomId) && isNum(v.tierUsd) && isUint(v.entryFee) && isNum(v.rank) && isNum(v.paid) && isNum(v.expiresInMs)
         ? { t: "passOffer", roomId: v.roomId, tierUsd: v.tierUsd, entryFee: v.entryFee, rank: v.rank, paid: v.paid, expiresInMs: v.expiresInMs }
@@ -336,6 +362,14 @@ export function decodeServer(raw: unknown): ServerMsg | null {
         : null;
     case "duelTx":
       return isStr(v.roomId) && isStr(v.tx) && isNum(v.players) && isStrArr(v.guests) ? { t: "duelTx", roomId: v.roomId, tx: v.tx, players: v.players, guests: v.guests } : null;
+    case "peerBack":
+      return isStr(v.roomId) && isStr(v.wallet) ? { t: "peerBack", roomId: v.roomId, wallet: v.wallet } : null;
+    case "matchOver":
+      return isStr(v.roomId) && Array.isArray(v.ranking) && v.ranking.every((r) => isObj(r) && isStr(r.w) && isNum(r.rank) && isNum(r.score) && isRole(r.role))
+        ? { t: "matchOver", roomId: v.roomId, ranking: v.ranking as RankEntry[] }
+        : null;
+    case "peerLeft":
+      return isStr(v.roomId) && isStr(v.wallet) ? { t: "peerLeft", roomId: v.roomId, wallet: v.wallet, ...(isNum(v.graceSeconds) ? { graceSeconds: v.graceSeconds } : {}) } : null;
     case "invite":
       return isStr(v.roomId) && isStr(v.entryFee) && isStr(v.host) && isNum(v.players) ? { t: "invite", roomId: v.roomId, entryFee: v.entryFee, host: v.host, players: v.players } : null;
     case "roomCreated":
@@ -418,6 +452,8 @@ export function decodeServer(raw: unknown): ServerMsg | null {
       return {
         t: "snap", roomId: v.roomId, tick: v.tick, timeLeftMs: v.timeLeftMs, zone,
         players: (v.players as PlayerSnap[]).map(withDefaults), eatenOrbs: v.eatenOrbs, newOrbs: v.newOrbs, events: v.events,
+        ...(isNum(v.dropIn) ? { dropIn: v.dropIn } : {}),
+        ...(isObj(v.drop) && isNum(v.drop.x) && isNum(v.drop.y) ? { drop: { x: v.drop.x, y: v.drop.y } } : {}),
       };
     }
     case "end": {

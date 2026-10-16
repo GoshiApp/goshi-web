@@ -33,7 +33,7 @@ if (boot) {
       if (!r.ok) throw new Error(String(r.status));
       const j = (await r.json()) as { items: Rec[] };
       msg.textContent = j.items.length === 0 ? t.none : `${t.kinds[kind]}: ${j.items.length}`;
-      for (const it of j.items) list.append(renderCard(it, kind === "wallet" ? q : null, ctx));
+      for (const it of j.items) if (!it.cluster || it.cluster === ctx.cluster) list.append(renderCard(it, kind === "wallet" ? q : null, ctx));
     } catch {
       msg.textContent = t.error;
     } finally {

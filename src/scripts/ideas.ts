@@ -274,8 +274,8 @@ if (boot) {
     const li = document.createElement("li"); li.className = "muted"; li.textContent = t.loading; list.append(li);
     try {
       const q = new URLSearchParams({ sort: sortSel.value, status: statusSel.value, v: voter, limit: "100" });
-      if (gateOn && session) q.set("s", session);
-      const r = await fetch(`${api}/ideas?${q}`);
+      // The session goes in a header, never in the address: addresses end up in server logs and in the Referer.
+      const r = await fetch(`${api}/ideas?${q}`, gateOn && session ? { headers: { "x-goshi-session": session } } : undefined);
       if (!r.ok) throw new Error(String(r.status));
       items = ((await r.json()) as { items: Idea[] }).items;
       draw(items);

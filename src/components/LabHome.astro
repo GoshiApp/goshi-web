@@ -1,0 +1,36 @@
+---
+import { lab } from "../content/lab";
+import { path, type Lang } from "../lib/i18n";
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const c = lab[lang];
+const href = (k?: string) => (k === "test" ? "https://test.goshi.app" : k === "matches" ? path(lang, "matches") : undefined);
+---
+<section class="lab-hero">
+  <div class="wrap">
+    <p class="lab-badge">LAB</p>
+    <h1>{c.h1}</h1>
+    <p class="lab-lead">{c.lead}</p>
+    <p class="btn-row">
+      <a class="btn btn-gold" href={path(lang, "play")}>{c.links.play}</a>
+      <a class="btn btn-glass" href={path(lang, "matches")}>{c.links.matches}</a>
+    </p>
+  </div>
+</section>
+<section class="lab-list">
+  <div class="wrap">
+    <ul class="lab-cards">
+      {c.experiments.map((e) => (
+        <li class={`lab-card is-${e.status}`}>
+          <p class="lab-status">{c.statusLabel[e.status]}</p>
+          <h2>{e.name}</h2>
+          <p>{e.text}</p>
+          <p class="muted">{e.try}</p>
+          {href(e.href) && <a class="btn btn-glass btn-sm" href={href(e.href)}>{e.href === "test" ? c.links.test : c.links.matches}</a>}
+        </li>
+      ))}
+    </ul>
+    <p class="lab-feedback">{c.feedback} <a href={path(lang, "ideas")}>{c.feedbackLink}</a></p>
+    <p class="muted"><a href="https://goshi.app">{c.links.main}</a> · <a href="https://test.goshi.app">{c.links.test}</a></p>
+  </div>
+</section>

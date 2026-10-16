@@ -1,14 +1,15 @@
 // One match of the archive as a card: what happened in one line, the "Watch it" button always in sight, and (unfolded) the
 // ranking in columns, the explorer link, the records and the in-browser check. Shared by the search page, the profile and the
 // global history. Text is written with textContent.
-import { mountRoom, type Item, type Strings } from "./match-viewer.ts";
+import { dataFromFiles, fetchRoomFiles, mountRoom, type Item, type Strings } from "./match-viewer.ts";
 import { verifyMatch } from "../lib/play/proof-check.ts";
 import { manager } from "../lib/play/wallet-session.ts";
+import { houseSplit } from "../lib/play/prizes.ts";
 import { explorerTxUrl, shortAddress, type Cluster } from "../lib/play/config.ts";
 
 export interface Rec {
   roomId: string; at: number; mode: string; cluster: string; tx: string | null; entryFee: string; wallets: string[];
-  ranking: { w: string; rank: number; score: number; role: string }[]; proof: any;
+  ranking: { w: string; rank: number; score: number; role: string }[]; proof: any; payout?: any;
 }
 export interface CardCtx { api: string; rpc: string; cluster: Cluster; t: any; r: any; verifyHref: string; m?: any }
 
@@ -86,6 +87,33 @@ export function renderCard(r: Rec, focus: string | null, ctx: CardCtx, opts: { g
       watch.disabled = false;
     });
     head.append(watch);
+    // One tap, no need to open the viewer: the whole replay as a single file that works offline (follow and mark any player).
+    if (ctx.r.viewer.interactiveShort) {
+      const dl = el("button", ctx.r.viewer.interactiveShort, "btn btn-glass btn-sm") as HTMLButtonElement;
+      dl.type = "button";
+      dl.title = ctx.r.viewer.downloadInteractive ?? "";
+      dl.setAttribute("aria-label", ctx.r.viewer.downloadInteractive ?? ctx.r.viewer.interactiveShort);
+      dl.addEventListener("click", async () => {
+        dl.disabled = true;
+        const label = dl.textContent;
+        dl.textContent = ctx.r.viewer.preparingFile;
+        try {
+          const { arena, files } = await fetchRoomFiles(api, r as unknown as Item);
+          const d = dataFromFiles(r as unknown as Item, arena, files);
+          const { downloadInteractive } = await import("../lib/play/standalone-export.ts");
+          await downloadInteractive({
+            item: r, arena, files: d.files, t: { ...ctx.r, ...ctx.r.viewer, verifyHref: ctx.verifyHref },
+            fileName: `goshi-${r.roomId}-interactive.html`,
+          });
+          dl.textContent = label;
+        } catch {
+          dl.textContent = ctx.r.viewer.downloadFailed || label;
+        } finally {
+          dl.disabled = false;
+        }
+      });
+      head.append(dl);
+    }
   }
 
   // The ranking, compact: three columns on a phone, four on a wide screen.
@@ -98,6 +126,34 @@ export function renderCard(r: Rec, focus: string | null, ctx: CardCtx, opts: { g
     grid.append(row);
   }
   body.append(grid);
+  // Where the money went, from the record of the match (the same numbers the closing transaction carries).
+  const pay = ctx.t.pay as Record<string, string> | undefined;
+  const po = r.payout;
+  if (pay && po && typeof po.pot === "string") {
+    const box = el("div", "", "match-pay");
+    box.append(el("h4", pay.title));
+    const rows = el("ul", "", "plain match-pay-list");
+    const line = (label: string, lamports: string | bigint, strong = false) => {
+      const li = el("li", "", strong ? "strong" : "");
+      li.append(el("span", label), el("b", `${(Number(lamports) / 1e9).toFixed(5).replace(/0+$/, "").replace(/\.$/, "")} SOL`));
+      rows.append(li);
+    };
+    line(pay.pot, po.pot, true);
+    const podium: { w: string; rank: number; lamports: string }[] = Array.isArray(po.podium) ? po.podium : [];
+    for (const x of podium) line(`${pay.first.replace("{n}", String(x.rank))} · ${shortAddress(x.w)}`, x.lamports);
+    const sabs: { w: string; lamports: string }[] = Array.isArray(po.saboteurs) ? po.saboteurs : [];
+    if (sabs.length > 0) line(pay.saboteurs.replace("{n}", String(sabs.length)), sabs[0].lamports);
+    if (typeof po.rake === "string" && po.rake !== "0") {
+      const hs = houseSplit(BigInt(po.rake));
+      line(pay.house, po.rake, true);
+      line(pay.burn, hs.burn);
+      line(pay.infra, hs.infra);
+      line(pay.liquidity, hs.liquidity);
+      line(pay.jackpot, hs.jackpot);
+    }
+    box.append(rows, el("p", pay.note, "muted small"));
+    body.append(box);
+  }
   const links = el("p", "", "idea-meta small");
   links.append(r.tx ? link(explorerTxUrl(ctx.cluster === "mainnet-beta" || r.cluster === "mainnet-beta" ? "mainnet-beta" : (r.cluster as Cluster), r.tx), t.tx) : el("span", t.noTx, "muted"));
   if (r.proof) links.append(link(`${api}/replay/${encodeURIComponent(r.roomId)}/arena`, t.arenaFile));

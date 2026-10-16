@@ -1,4 +1,6 @@
 ---
+// The stylesheet is a plain file with a one hour cache: a new build gets a new address so nobody plays with an old layout.
+const buildStamp = Date.now().toString(36);
 // The working play page. Rendered only when site.play.enabled is true and the settings are complete.
 // Static words and structure are here; src/scripts/play.ts fills the live parts (rooms, pot, balances)
 // and is the only code that loads the wallet and Anchor client (lazily, from inside that script).
@@ -23,7 +25,7 @@ const unitGoshi = mainnet ? c.units.goshiLive : c.units.goshiTest;
 const fill = (tpl: string, vars: Record<string, string>) => tpl.replace(/\{(\w+)\}/g, (_m, k: string) => vars[k] ?? "");
 const bannerText = mainnet ? c.banner.mainnet : p.cluster === "testnet" ? c.banner.testnet : c.banner.devnet;
 const explorerCluster = p.explorerCluster ?? p.cluster;
-const networkName = p.cluster === "testnet" ? "Testnet" : "Devnet";
+const networkName = p.cluster === "mainnet-beta" ? "Mainnet" : p.cluster === "testnet" ? "Testnet" : "Devnet";
 const potRows = ["first", "second", "third", "burn", "infra", "liquidity", "jackpot"] as const;
 
 // Everything the script needs, as data. bigint values travel as text.
@@ -39,6 +41,7 @@ const data = {
   settings: {
     rpcUrl: p.rpcUrl, programId: p.programId, goshiMint: p.goshiMint, infraWallet: p.infraWallet, liquidityWallet: p.liquidityWallet,
     serverUrl: p.serverUrl,
+    regions: p.regions ?? [],
   },
   walletNames: WALLET_NAMES,
   homeHref: path(lang, "home"),
@@ -56,8 +59,8 @@ const data = {
 const json = JSON.stringify(data).replace(/</g, "\\u003c");
 ---
 <!-- Plain file in public/css, linked only here: Astro would otherwise attach a bundled stylesheet to every page. -->
-<link rel="stylesheet" href="/css/play.css" />
-<section class="section play" id="play" data-play-state="live" data-cluster={p.cluster}>
+<link rel="stylesheet" href={`/css/play.css?v=${buildStamp}`} />
+<section class="section play" id="play" data-play-state="live" data-cluster={p.cluster} data-lab={site.lab ? "1" : undefined}>
   <div class="wrap play-stack">
     <script type="application/json" id="play-data" set:html={json}></script>
 
@@ -120,7 +123,31 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
           <span>{c.practice.nameLabel}</span>
           <input id="play-now-name" type="text" maxlength="14" autocomplete="nickname" autocapitalize="words" spellcheck="false" placeholder={c.practice.namePlaceholder} />
         </label>
+        {(p.regions?.length ?? 0) > 1 && (<label class="play-now-diff" for="play-now-server">
+          <span>{c.practice.serverLabel}</span>
+          <select id="play-now-server">
+            <option value="auto">{c.practice.serverAuto}</option>
+            {p.regions!.map((r) => <option value={r.id} data-name={(c.practice.regionNames as Record<string, string>)[r.id] ?? r.id}>{(c.practice.regionNames as Record<string, string>)[r.id] ?? r.id}</option>)}
+          </select>
+        </label>)}
+        {site.lab && (<label class="play-now-diff" for="play-now-mode">
+          <span>{c.practice.modeLabel}</span>
+          <select id="play-now-mode">
+            <option value="match">{c.practice.modeMatch}</option>
+            <option value="survival">{c.practice.modeSurvival}</option>
+          </select>
+        </label>)}
+        {site.botLevels && (<label class="play-now-diff" for="play-now-diff">
+          <span>{c.practice.diffLabel}</span>
+          <select id="play-now-diff">
+            <option value="easy">{c.practice.diffEasy}</option>
+            <option value="medium">{c.practice.diffMedium}</option>
+            <option value="hard" selected>{c.practice.diffHard}</option>
+            <option value="insane">{c.practice.diffInsane}</option>
+          </select>
+        </label>)}
         <button type="button" class="btn btn-gold btn-lg" id="play-now-btn">{c.practice.button}</button>
+        {site.botLevels && <button type="button" class="btn btn-glass btn-lg" id="play-live-btn">{c.practice.liveButton}</button>}
         <button type="button" class="btn btn-glass" id="play-now-leave" hidden>{c.practice.leave}</button>
       </div>
       <p class="demo-note">{c.practice.note}</p>

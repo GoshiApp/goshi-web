@@ -12,21 +12,34 @@ const data = JSON.stringify({ api, rpc: site.play.rpcUrl ?? "https://api.devnet.
 ---
 <section class="section" id="verify" data-auto-wallet={auto ? "1" : undefined}>
   <div class="wrap ideas">
-    <form class="glass ideas-form" id="verify-form" novalidate>
-      <label for="verify-q">{t.label}</label>
-      <input id="verify-q" name="q" type="text" placeholder={t.placeholder} autocomplete="off" spellcheck="false" required />
-      <p class="muted small">{t.hint}</p>
-      <button class="btn btn-gold" type="submit" id="verify-go">{t.button}</button>
-      <button class="btn btn-glass" type="button" id="verify-mine">{t.mine}</button>
-    </form>
-    <div class="glass ideas-form">
-      <h3>{t.howTitle}</h3>
+    {auto ? (
+      <>
+        <p class="muted" id="verify-msg" role="status" aria-live="polite"></p>
+        <ul class="idea-list" id="verify-list"></ul>
+      </>
+    ) : null}
+    <details class="glass ideas-form verify-fold" open={!auto}>
+      <summary>{t.button}</summary>
+      <form id="verify-form" novalidate>
+        <label for="verify-q">{t.label}</label>
+        <input id="verify-q" name="q" type="text" placeholder={t.placeholder} autocomplete="off" spellcheck="false" required />
+        <p class="muted small">{t.hint}</p>
+        <button class="btn btn-gold" type="submit" id="verify-go">{t.button}</button>
+        <button class="btn btn-glass" type="button" id="verify-mine">{t.mine}</button>
+      </form>
+    </details>
+    {!auto ? (
+      <>
+        <p class="muted" id="verify-msg" role="status" aria-live="polite"></p>
+        <ul class="idea-list" id="verify-list"></ul>
+      </>
+    ) : null}
+    <details class="glass ideas-form verify-fold">
+      <summary>{t.howTitle}</summary>
       <ul>{t.how.map((x) => <li>{x}</li>)}</ul>
       <h3>{t.winTitle}</h3>
       <ul>{t.win.map((x) => <li>{x}</li>)}</ul>
-    </div>
-    <p class="muted" id="verify-msg" role="status" aria-live="polite"></p>
-    <ul class="idea-list" id="verify-list"></ul>
+    </details>
     <script type="application/json" id="verify-data" set:html={data}></script>
   </div>
 </section>

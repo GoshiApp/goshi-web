@@ -57,7 +57,11 @@ if (root && root.dataset.server) {
       if (bar) {
         const mt = m.maintenance;
         if (mt && (mt.state === "soon" || mt.state === "draining" || mt.state === "down")) {
-          const at = new Date(mt.state === "down" ? mt.endsAt : mt.startsAt).toLocaleString(document.documentElement.lang || undefined, { dateStyle: "short", timeStyle: "short" });
+          const when = new Date(mt.state === "down" ? mt.endsAt : mt.startsAt);
+          // While down, only the expected hour is shown, in Spain time (the team's), without a date.
+          const at = mt.state === "down"
+            ? when.toLocaleTimeString(document.documentElement.lang || undefined, { timeStyle: "short", timeZone: "Europe/Madrid" })
+            : when.toLocaleString(document.documentElement.lang || undefined, { dateStyle: "short", timeStyle: "short" });
           const tpl = root.dataset[`maint${mt.state[0].toUpperCase()}${mt.state.slice(1)}`] ?? "";
           bar.textContent = tpl.replace("{time}", at);
           bar.hidden = false;

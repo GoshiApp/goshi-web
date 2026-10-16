@@ -12,11 +12,11 @@ const MAX_SPAN = 1800;
  * World units visible along the short side of the screen. At the start (mass 20) the head, drawn 2 * r * 1.12 wide,
  * is HEAD_SCREEN_FRACTION of it; it zooms out gently as the body radius grows, so a big snake never fills the screen.
  */
-export function viewSpan(mass: number): number {
+export function viewSpan(mass: number, maxSpan: number = MAX_SPAN): number {
   const start = 2 * bodyRadius(START_MASS) * HEAD_DRAW_SCALE;
   const base = start / HEAD_SCREEN_FRACTION;
   const grow = bodyRadius(Math.max(START_MASS, mass)) / bodyRadius(START_MASS);
-  return Math.min(MAX_SPAN, base * Math.pow(grow, 0.8));
+  return Math.min(maxSpan, base * Math.pow(grow, 0.8));
 }
 
 /** Distance from point p to the polyline (0 for an empty path is Infinity). */

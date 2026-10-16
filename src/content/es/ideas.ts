@@ -108,6 +108,11 @@ export const verifyCopy: VerifyCopy = {
   bad: "No coincide",
   unknown: "No se pudo comprobar",
   sol: "SOL",
+  pay: {
+    title: "A dónde fue el dinero", pot: "Pozo", first: "Puesto {n}", saboteurs: "Saboteadores ({n}), cada uno", house: "Parte de la casa", burn: "Recompra y quema", infra: "Infraestructura",
+    liquidity: "Liquidez", jackpot: "Super pozo", note: "Una parte menor que el mínimo de la red (unos 0.0009 SOL) no se puede enviar a una billetera: va al super pozo.",
+    winner: "Ganador", others: "Cada uno de los demás",
+  },
   watch: "Verla",
   mine: "Ver mis partidas (billetera conectada)",
   mineNeedWallet: "Conecta tu billetera (arriba a la derecha) y pulsa de nuevo el botón, o pega tu dirección arriba.",
@@ -118,12 +123,12 @@ export const verifyCopy: VerifyCopy = {
     "Pulsa \"Verificar en tu navegador\" en cualquier partida para revisar la semilla, tus movimientos y el registro en la cadena sin confiar en nadie.",
     "Las partidas de práctica son gratis y no van a la cadena: salen en la pantalla de resultados del juego, no aquí.",
   ],
-  winTitle: "Qué puedes ganar en devnet",
+  winTitle: "[[t:Qué puedes ganar en devnet]][[m:Qué puedes ganar]]",
   win: [
-    "Práctica (gratis): los 3 primeros reciben SOL de prueba de Goshi: 0,02 el 1.º, 0,01 el 2.º, 0,005 el 3.º. Es un regalo para quien prueba el juego, desarrolladores incluidos.",
-    "Salas de prueba con entrada: la entrada es SOL de prueba. El premio es el 88% de las entradas, repartido 60% / 25% / 15% entre los 3 primeros. Aunque la sala se llene de bots, el premio es el mismo.",
+    "[[t:Práctica (gratis): los 3 primeros reciben SOL de prueba de Goshi: 0,02 el 1.º, 0,01 el 2.º, 0,005 el 3.º. Es un regalo para quien prueba el juego, desarrolladores incluidos.]][[m:Práctica (gratis): no se firma nada y no hay premios.]]",
+    "[[t:Salas de prueba con entrada: la entrada es SOL de prueba. El premio es el 88% de las entradas, repartido 60% / 25% / 15% entre los 3 primeros. Aunque la sala se llene de bots, el premio es el mismo.]][[m:Salas con entrada: la entrada es SOL de tu propia billetera. El premio es el 88% de las entradas, repartido 60% / 25% / 15% entre los 3 primeros.]]",
     "Duelos: el ganador se lleva el bote menos el 3%.",
-    "Es SOL de devnet sin valor monetario. Nada de esto es dinero real.",
+    "[[t:Es SOL de devnet sin valor monetario. Nada de esto es dinero real.]][[m:Es dinero real y puedes perder tu entrada. Juega solo lo que puedas permitirte perder.]]",
   ],
 };
 
@@ -209,6 +214,11 @@ export const replayCopy: ReplayCopy = {
     deathsTitle: "Eliminaciones (toca una para ir ahí)", deathLine: "{a} fue eliminado por {b}", byZone: "la zona segura", byWall: "el borde del mundo",
     recordHd: "Guardar video (HD)", recStop: "Detener y guardar", recording: "Grabando en HD, deja esta pestaña abierta...", recSaved: "Video listo.", recSave: "Descargar video", recUnsupported: "Este navegador no puede grabar video. Prueba Chrome, Edge o Safari.", recMark: "goshi.app · toda partida se puede comprobar",
     noDeaths: "Nadie fue eliminado.", youTag: "tú",
+    interactiveShort: "Archivo interactivo",
+    markPlayer: "\u2605 Marcar", unmarkPlayer: "\u2605 Quitar marca",
+    tapHint: "Toca a un jugador en el mapa para seguirlo. Vuelve a tocarlo para marcarlo con un aro dorado.",
+    downloadInteractive: "Descargar la repetición interactiva (.html, funciona sin conexión)", preparingFile: "Preparando el archivo...", downloadFailed: "No se pudo preparar el archivo. Inténtalo de nuevo.",
+    standaloneNote: "Repetición interactiva: la partida, los registros y el visor están dentro de este archivo. No se envía nada a ningún sitio.",
   },
   paint: { you: "tú", protectedHint: "Protegido {s}", backToZone: "Vuelve a la zona segura ({n})", countdown: "Prepárate", finalZone: "Zona final", nextZone: "Próxima zona", nitro: "Nitro", mass: "Masa" },
   verifyLink: "Verificar esta partida",
@@ -233,6 +243,9 @@ export const matchesCopy: MatchesCopy = {
   players: "{n} jugadores", winner: "Ganó {w}", loadMore: "Ver partidas anteriores", loading: "Cargando partidas...",
   empty: "Todavía no hay partidas aquí. Aparecen cuando una sala se cierra en la cadena.", error: "No se pudieron cargar las partidas. Inténtalo en un momento.",
   refresh: "Actualizar", shown: "{n} partidas mostradas", searchLink: "¿Buscas una en particular? Busca por billetera, sala o transacción.",
+  tvStart: "Ver todas seguidas", tvNext: "Siguiente partida", tvExit: "Salir", tvCount: "Partida {i} de {n}", tvEmpty: "Todavía no hay partidas para reproducir.",
+  tvMusicOn: "Música activada", tvMusicOff: "Música apagada", liveBadge: "EN VIVO", liveStart: "Empezar el directo",
+  liveLines: ["Juega gratis ahora, sin billetera: {domain}", "Cada partida es pública y se puede repetir", "Juegos de habilidad de código abierto en Solana", "¿Crees que puedes ganar la arena? Ven a demostrarlo"],
 };
 
 export const matchesPage: Page = {

@@ -10,7 +10,7 @@ const c = copy[lang].play;
 const a = c.arena;
 const l = c.live;
 ---
-<section class="glass play-panel arena-card" id="realtime-arena" aria-labelledby="arena-h" data-arena="orb-rush">
+<section class="glass play-panel arena-card" id="realtime-arena" aria-labelledby="arena-h" data-arena="orb-rush" data-experimental={site.soundPack ? "1" : "0"}>
   <p class="eyebrow">{a.badge}</p>
   <h2 id="arena-h">{a.h2}</h2>
   <p>{a.text}</p>
@@ -26,6 +26,7 @@ const l = c.live;
     <ul class="seat-grid seat-grid-free" data-lv-free></ul>
     <div class="btn-row">
       <button type="button" class="btn btn-gold btn-lg" data-lv-fill hidden></button>
+      <button type="button" class="btn btn-glass btn-lg" data-lv-share></button>
       <button type="button" class="btn btn-glass btn-lg" data-lv-practice></button>
       <button type="button" class="btn btn-glass btn-lg" data-tuto-open>{l.tutorial.open}</button>
     </div>
@@ -80,6 +81,8 @@ const l = c.live;
       <button type="button" class="btn btn-glass btn-sm touch-only" data-ctrl-toggle data-joy-label={l.game.ctrlJoystick} data-follow-label={l.game.ctrlFollow}>{l.game.ctrlJoystick}</button>
       <button type="button" class="btn btn-glass btn-sm" data-fs-toggle data-label-on={l.game.fullscreen} data-label-off={l.game.exitFullscreen} aria-pressed="false">{l.game.fullscreen}</button>
       <button type="button" class="btn btn-glass btn-sm" data-sound-toggle aria-pressed="false">{l.game.soundOff}</button>
+      <button type="button" class="btn btn-glass btn-sm" data-music-toggle aria-pressed="false">{l.game.musicOn}</button>
+      <button type="button" class="btn btn-glass btn-sm" data-meme-toggle aria-pressed="false">{l.game.memeOn}</button>
       <label class="quality-pick"><span>{l.game.quality}</span>
         <select data-quality>
           <option value="auto">{l.game.qualityAuto}</option>
@@ -98,6 +101,7 @@ const l = c.live;
       <div class="game-canvas">
         <button type="button" class="fs-fab" data-fs-toggle data-label-on={l.game.fullscreen} data-label-off={l.game.exitFullscreen} aria-label={l.game.fullscreen} aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <p class="fs-hud" data-fs-hud aria-hidden="true"></p>
+        <button type="button" class="btn btn-glass btn-sm fs-leave" data-practice-leave hidden></button>
         <div class="joy" data-joy hidden aria-hidden="true"><span class="joy-knob" data-joy-knob></span></div>
         <button type="button" class="boost-fab touch-only" data-boost-button aria-label={l.game.boost} aria-pressed="false">{l.game.boost}</button>
         <canvas id="play-canvas" tabindex="0" role="img" aria-label={l.game.canvasLabel}></canvas>

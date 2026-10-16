@@ -3,6 +3,9 @@
 //  - an on-chain room: the socket of the connected wallet (driven by play-live.ts).
 // It owns the canvas arena (src/lib/play/orb-rush.ts), the loading state (never a blank canvas), the waiting room view
 // and the practice result. Only one match is shown at a time: starting a new one replaces the previous.
+import { measureRegions, pickRegion, pickedRegion } from "../lib/play/region.ts";
+import { youWord, CEO_WALLET } from "../lib/play/staff.ts";
+const walletNow = (): string | null => (manager.current.status === "connected" ? manager.current.address : null);
 import { SKINS, recordGame, selectedSkin } from "../lib/play/skins.ts";
 import { bestStreak, record as recordMission } from "../lib/play/missions.ts";
 import { registerArena } from "../lib/play/arena-adapter.ts";
@@ -27,10 +30,11 @@ export type Source = "practice" | "room";
 const NAME_KEY = "goshi-practice-name";
 /** A room that waits this long with 2 to 9 paid players gets a VS offer (server/PROTOCOL.md). */
 export const VS_AFTER_MS = 5 * 60 * 1000;
-const CONNECT_TIMEOUT_MS = 12_000;
+// A server that was asleep (on demand) takes a few seconds to wake up: the wait is long enough for that.
+const CONNECT_TIMEOUT_MS = 30_000;
 
 interface ShellData {
-  settings: { serverUrl: string };
+  settings: { serverUrl: string; regions?: { id: string; url: string }[]; regionSlot?: number };
   cluster: string;
   t: { live: PlayCopy["live"]; practice: PlayCopy["practice"] };
 }
@@ -125,15 +129,29 @@ function createShell(d: ShellData): ArenaShell {
   // Sound is off until the person turns it on (that click is also what lets the browser play audio).
   let store: Storage | null = null;
   try { store = window.localStorage; } catch { /* blocked */ }
-  const sound = new ArenaSound({ storage: store });
+  const sound = new ArenaSound({ storage: store, enhanced: document.getElementById("realtime-arena")?.dataset.experimental === "1" });
   const soundBtn = q<HTMLButtonElement>("[data-sound-toggle]");
   const paintSound = () => {
     if (!soundBtn) return;
     soundBtn.setAttribute("aria-pressed", String(sound.enabled));
     soundBtn.textContent = sound.enabled ? live.game.soundOn : live.game.soundOff;
   };
-  soundBtn?.addEventListener("click", () => { sound.toggle(); paintSound(); });
-  paintSound();
+  const musicBtn = q<HTMLButtonElement>("[data-music-toggle]");
+  const memeBtn = q<HTMLButtonElement>("[data-meme-toggle]");
+  const paintAudio = () => {
+    paintSound();
+    if (musicBtn) { musicBtn.setAttribute("aria-pressed", String(sound.music)); musicBtn.textContent = sound.music ? live.game.musicOn : live.game.musicOff; }
+    if (memeBtn) { memeBtn.setAttribute("aria-pressed", String(sound.memes)); memeBtn.textContent = sound.memes ? live.game.memeOn : live.game.memeOff; }
+  };
+  soundBtn?.addEventListener("click", () => { sound.toggle(); paintAudio(); });
+  musicBtn?.addEventListener("click", () => { sound.toggleMusic(); paintAudio(); });
+  memeBtn?.addEventListener("click", () => { sound.toggleMemes(); paintAudio(); });
+  // The Play click is what lets the browser play audio: sound starts by itself there unless the person already chose.
+  document.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement | null;
+    if (t?.closest("#play-now-btn, [data-lv-practice], [data-dead-again], #play-again")) { sound.autoEnable(); paintAudio(); }
+  }, true);
+  paintAudio();
   // The goshi color of the local player: 8 free colors, remembered here, never sent to the server.
   const readColor = (): number | null => {
     try { return parseColorChoice(localStorage.getItem(COLOR_KEY)); } catch { return null; }
@@ -175,6 +193,15 @@ function createShell(d: ShellData): ArenaShell {
         if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch { /* already out */ } }
         try { (screen.orientation as unknown as { unlock?: () => void })?.unlock?.(); } catch { /* optional */ }
         paint();
+        reveal();
+      };
+      // Leaving full screen (also with Escape) must leave the small board in view, still showing the match: the page comes back
+      // at the scroll position it had before, which can be far from the board.
+      const reveal = () => {
+        if (gameHost.hidden) return;
+        const go = () => gameHost.scrollIntoView({ behavior: "auto", block: "center" });
+        go();
+        setTimeout(go, 120);
       };
       const enter = async () => {
         let ok = false;
@@ -191,7 +218,44 @@ function createShell(d: ShellData): ArenaShell {
         q<HTMLElement>("#play-canvas")?.focus({ preventScroll: true });
       };
       const toggle = () => void (on() ? leave() : enter());
+      // A match ended: the result is outside the board, so full screen is left (also from the practice end).
+      // The result is shown over the board, in full screen, with a soft fade: the screen is never taken away from the person.
+      // It goes back to its place in the page when it is closed, and full screen is left then if the board is gone.
+      let resultHome: { parent: Node; next: Node | null } | null = null;
+      const undock = () => {
+        if (!resultHome) return;
+        resultHome.parent.insertBefore(resultEl, resultHome.next);
+        resultHome = null;
+        area.classList.remove("has-result");
+        if (!on()) return;
+        if (gameHost.hidden) void leave();
+      };
+      new MutationObserver(() => { if (resultEl.hidden) undock(); }).observe(resultEl, { attributes: true, attributeFilter: ["hidden"] });
+      window.addEventListener("goshi-leave-fs", () => {
+        if (!on()) return;
+        if (!resultHome && resultEl.parentNode) {
+          resultHome = { parent: resultEl.parentNode, next: resultEl.nextSibling };
+          area.append(resultEl);
+          area.classList.add("has-result");
+        }
+      });
       for (const b of toggles) b.addEventListener("click", toggle);
+      // Leave a practice match at any time, also in full screen: one button on the board itself.
+      // AFK, for the team wallet only and with no button for anybody: the key "ñ" gives the body to the elite bot and takes it back.
+      let afkOn = false;
+      document.addEventListener("keydown", (e) => {
+        if ((e.key !== "ñ" && e.key !== "Ñ") || e.ctrlKey || e.metaKey || e.altKey) return;
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (!ceoSession || !showMode) return;
+        afkOn = !afkOn;
+        (pClient as unknown as { afk?: (on: boolean) => boolean } | null)?.afk?.(afkOn);
+      });
+      const leaveBtn = q<HTMLButtonElement>("[data-practice-leave]");
+      if (leaveBtn) {
+        leaveBtn.textContent = $("play-now-leave").textContent ?? "";
+        leaveBtn.addEventListener("click", () => { stopPractice(); void leave(); });
+      }
 
       // On a phone the game is played sideways, like the other .io games: in portrait a match asks to rotate, in landscape the board
       // takes the whole screen by itself (no gesture is needed for this layout).
@@ -230,9 +294,60 @@ function createShell(d: ShellData): ArenaShell {
         if (!playing) stayPortrait = false;
       }
       setInterval(syncMobile, 500);
+
+      // A match must not be lost by a stray key or a stray swipe. While one is on screen:
+      //  - Space, Enter and the page keys never activate the focused button (the full screen toggle, a link) nor scroll the page;
+      //  - the page does not scroll or bounce under the board;
+      //  - if the board is out of view for any reason, one tap brings the player back to it.
+      const matchOn = (): boolean => !gameHost.hidden && Boolean(resultEl.hidden);
+      const typingIn = (t: EventTarget | null) => {
+        const el = t as HTMLElement | null;
+        return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+      };
+      const guarded = new Set([" ", "Spacebar", "Enter", "PageDown", "PageUp", "Home", "End"]);
+      const guard = (e: KeyboardEvent) => {
+        if (!matchOn() || typingIn(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (!guarded.has(e.key)) return;
+        // Only the focused control would react: the game itself listens on window and still sees the key.
+        e.preventDefault();
+      };
+      document.addEventListener("keydown", guard, true);
+      document.addEventListener("keyup", guard, true);
+      // A click made by the keyboard (detail 0) on the full screen button during a match is a stray key: ignore it.
+      for (const b of toggles) b.addEventListener("click", (e) => { if (e.detail === 0 && matchOn() && e.isTrusted) { e.stopImmediatePropagation(); b.blur(); } }, true);
+
+      const back = document.createElement("button");
+      back.type = "button";
+      back.className = "btn btn-gold match-return";
+      back.textContent = as.returnToMatch;
+      back.hidden = true;
+      back.addEventListener("click", () => { gameHost.scrollIntoView({ behavior: "smooth", block: "center" }); });
+      document.body.append(back);
+      // Closing the tab or swiping back does not end a match (the body stays in the arena and the same link brings the player back),
+      // but a stray gesture should not do it silently: ask first, and keep the swipe-back inside the page.
+      window.addEventListener("beforeunload", (e) => {
+        if (matchOn() && source === "room") { e.preventDefault(); e.returnValue = as.matchLocked; }
+      });
+      let trapped = false;
+      window.addEventListener("popstate", () => { if (matchOn() && source === "room") history.pushState({ goshiMatch: 1 }, ""); });
+      let wasOn = false;
+      setInterval(() => {
+        const on_ = matchOn();
+        if (leaveBtn) leaveBtn.hidden = !(on_ && source === "practice" && !pEnded);
+        if (afkOn && (!on_ || arena?.isDead)) afkOn = false;
+        document.documentElement.classList.toggle("match-lock", on_);
+        area.classList.toggle("is-frenzy", !!frenzy);
+        if (on_ && !wasOn) { const a = document.activeElement as HTMLElement | null; if (a && a !== document.body && a.tagName !== "INPUT") a.blur(); }
+        wasOn = on_;
+        if (on_ && source === "room" && !trapped) { history.pushState({ goshiMatch: 1 }, ""); trapped = true; }
+        if (!on_) trapped = false;
+        if (!on_ || area.classList.contains("is-fs")) { back.hidden = true; return; }
+        const r = gameHost.getBoundingClientRect();
+        back.hidden = r.bottom > 80 && r.top < window.innerHeight - 80;
+      }, 400);
       window.addEventListener("orientationchange", syncMobile);
       window.addEventListener("resize", syncMobile);
-      document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) area.classList.remove("is-pseudo-fs"); paint(); });
+      document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) { area.classList.remove("is-pseudo-fs"); paint(); reveal(); } else paint(); });
       document.addEventListener("keydown", (e) => {
         const tag = (e.target as HTMLElement | null)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -272,7 +387,7 @@ function createShell(d: ShellData): ArenaShell {
         strings: {
           you: g.you, startAnnounce: g.startAnnounce, endAnnounce: g.endAnnounce,
           zoneLines: { calm: g.zoneCalm, warn: g.zoneWarn, shrink: g.zoneShrink, hold: g.zoneHold, final: g.finalZone },
-          finalZone: g.finalZone, nextZone: g.nextZone, zoneOutBanner: g.zoneOutBanner,
+          finalZone: g.finalZone, nextZone: g.nextZone, zoneOutBanner: g.zoneOutBanner, showerIn: g.showerIn, showerLanded: g.showerLanded,
           countdown: g.countdown, deadTitle: g.deadTitle, deadText: g.deadText,
           death: {
             youBody: g.deathYouBody, youHead: g.deathYouHead, youZone: g.deathYouZone, youWall: g.deathYouWall, onYourBody: g.deathOnYourBody,
@@ -350,6 +465,7 @@ function createShell(d: ShellData): ArenaShell {
   }
 
   function disposeArena() {
+    sound.stopMusic();
     endFrenzy();
     arena?.dispose();
     arena = null;
@@ -422,6 +538,19 @@ function createShell(d: ShellData): ArenaShell {
 
   // ------------------------------------------------------------------ practice
 
+  const DIFF_KEY = "goshi-difficulty";
+  function currentDifficulty(): "easy" | "medium" | "hard" | "insane" {
+    const sel = document.getElementById("play-now-diff") as HTMLSelectElement | null;
+    if (!sel) return "hard";
+    const v = sel.value;
+    return v === "easy" || v === "medium" || v === "insane" ? v : "hard";
+  }
+  (() => {
+    const sel = document.getElementById("play-now-diff") as HTMLSelectElement | null;
+    if (!sel) return;
+    try { const saved = localStorage.getItem(DIFF_KEY); if (saved) sel.value = saved; } catch { /* optional */ }
+    sel.addEventListener("change", () => { try { localStorage.setItem(DIFF_KEY, sel.value); } catch { /* optional */ } });
+  })();
   function cardEls() {
     return {
       btn: $<HTMLButtonElement>("play-now-btn"),
@@ -519,8 +648,91 @@ function createShell(d: ShellData): ArenaShell {
     return w.status === "connected" ? w.address : null;
   };
 
+  // The server picker: the page already talks to the chosen region (play.ts); changing it reloads the page on the new one.
+  const regions = d.settings.regions ?? [];
+  if (regions.length > 1) {
+    const sel = document.getElementById("play-now-server") as HTMLSelectElement | null;
+    if (sel) sel.value = pickedRegion();
+    sel?.addEventListener("change", () => { pickRegion(sel.value); location.reload(); });
+    void measureRegions(regions).then((ms) => {
+      if (!sel) return;
+      for (const o of Array.from(sel.options)) {
+        if (o.value === "auto") continue;
+        const v = ms.get(o.value);
+        const here = regions[d.settings.regionSlot ?? 0]?.id === o.value ? " ✓" : "";
+        o.textContent = `${o.dataset.name ?? o.value}${v !== undefined ? ` · ${v} ms` : ""}${here}`;
+      }
+    });
+  }
+  const practiceServer = (): string => d.settings.serverUrl;
+  let practiceUrl = d.settings.serverUrl;
+
+  // The live arena: always running with 20 places, bots with fixed addresses and room for people (with a queue).
+  let showMode = false;
+  /** This connection signed in with the team wallet: the only one allowed to use AFK. */
+  let ceoSession = false;
+  let livePanel: HTMLElement | null = null;
+  /** Set by the entry button of the page: take a place as soon as the arena is on screen. */
+  let autoJoinLive = false;
+  /** A normal practice match was asked for: the live arena panel goes away and the next match is a private one. */
+  function leaveLiveMode() {
+    if (!showMode) return;
+    showMode = false;
+    livePanel?.remove();
+    livePanel = null;
+    document.querySelectorAll(".tv-badge, .tv-line").forEach((n) => n.remove());
+  }
+  /** Opens the live arena (a place is taken at once when autoJoin is true). Called from a click: it is what lets the sound play. */
+  function enterLiveArena(autoJoin: boolean) {
+    if (showMode && livePanel) { if (autoJoin) liveJoin(); return; }
+    autoJoinLive = autoJoin;
+    autoJoinLive = autoJoin;
+    showMode = true;
+    sound.autoEnable();
+    sound.setIntensity(1);
+    void startPractice();
+    livePanel = document.createElement("div");
+    livePanel.className = "live-panel";
+    const lt = document.createElement("span"); lt.setAttribute("data-live-text", ""); lt.textContent = pc.connecting;
+    const lj = document.createElement("button"); lj.type = "button"; lj.className = "btn btn-gold btn-sm"; lj.setAttribute("data-live-join", ""); lj.textContent = pc.liveJoin;
+    const ll = document.createElement("button"); ll.type = "button"; ll.className = "btn btn-glass btn-sm"; ll.setAttribute("data-live-leave", ""); ll.textContent = pc.liveLeave; ll.hidden = true;
+    lj.addEventListener("click", () => liveJoin());
+    ll.addEventListener("click", () => { (pClient as unknown as { liveLeave?: () => boolean } | null)?.liveLeave?.(); });
+    livePanel.append(lt, lj, ll);
+    document.body.append(livePanel);
+    const badge = document.createElement("div");
+    badge.className = "tv-badge"; badge.textContent = pc.showBadge;
+    const line = document.createElement("div");
+    line.className = "tv-line";
+    const lines = pc.showLines;
+    let li = 0;
+    line.textContent = lines[0] ?? "";
+    setInterval(() => { li = (li + 1) % lines.length; line.textContent = lines[li]; }, 9000);
+    document.body.append(badge, line);
+    setTimeout(() => document.querySelector<HTMLElement>("[data-fs-toggle]")?.click(), 1500);
+  }
+
+  function liveJoin() {
+    const c = pClient as unknown as { liveJoin?: (n?: string, w?: string, s?: string) => boolean } | null;
+    const nameEl = document.getElementById("play-now-name") as HTMLInputElement | null;
+    const clean = (nameEl?.value ?? "").trim().replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 14).trim();
+    c?.liveJoin?.(clean || undefined, connectedAddress() ?? undefined, selectedSkin() ?? undefined);
+  }
+  function onLive(m: { state: "watching" | "queued" | "playing" | "dead"; places: number; humans: number; waiting: number; watching: number; you?: string; pos?: number }) {
+    if (m.state === "playing" && m.you) arena?.setYou(m.you);
+    if (autoJoinLive && m.state === "watching") { autoJoinLive = false; liveJoin(); }
+    if (!livePanel) return;
+    const text = livePanel.querySelector<HTMLElement>("[data-live-text]")!;
+    const join = livePanel.querySelector<HTMLButtonElement>("[data-live-join]")!;
+    const leave = livePanel.querySelector<HTMLButtonElement>("[data-live-leave]")!;
+    const counts = fill(pc.liveCounts, { humans: m.humans, places: m.places, waiting: m.waiting, watching: m.watching });
+    if (m.state === "playing") { text.textContent = `${pc.livePlaying} · ${counts}`; join.hidden = true; leave.hidden = false; }
+    else if (m.state === "queued") { text.textContent = `${fill(pc.liveQueued, { n: m.pos ?? 1 })} · ${counts}`; join.hidden = true; leave.hidden = false; }
+    else if (m.state === "dead") { text.textContent = `${pc.liveDead} · ${counts}`; join.hidden = false; leave.hidden = true; }
+    else { text.textContent = counts; join.hidden = false; leave.hidden = true; }
+  }
   async function startPractice() {
-    if (!tutoSeen() && !(await showTutorial())) return;
+    if (!showMode && !tutoSeen() && !(await showTutorial())) return;
     const { btn, name, msg, leave } = cardEls();
     const clean = name.value.trim().replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 14).trim();
     rememberName(clean);
@@ -545,16 +757,47 @@ function createShell(d: ShellData): ArenaShell {
       practiceFail(pc.unreachable);
       return;
     }
-    const c = new ServerClientCtor(d.settings.serverUrl, { address: "", signMessage: async () => new Uint8Array() }, { anonymous: true });
+    // The team's own wallet signs in (once, with a click) so that the server can know it is that wallet: the eating power of the
+    // live arena is given only to a verified connection. Everybody else is an anonymous viewer.
+    const mine = connectedAddress();
+    let c: ServerClient;
+    if (showMode && mine === CEO_WALLET) {
+      let store: Storage | null = null;
+      try { store = window.localStorage; } catch { /* blocked */ }
+      const { SessionStore } = await import("../lib/play/session.ts");
+      practiceUrl = practiceServer();
+      c = new ServerClientCtor(practiceUrl, { address: mine, signMessage: (text) => manager.signMessage(text) }, { sessions: new SessionStore(store) });
+      c.on("signinNeeded", () => { if (pClient === c) c.signIn(); });
+      c.on("authed", (m) => { if (pClient === c) ceoSession = (m as { wallet?: string }).wallet === CEO_WALLET; });
+    } else {
+      practiceUrl = practiceServer();
+      c = new ServerClientCtor(practiceUrl, { address: "", signMessage: async () => new Uint8Array() }, { anonymous: true });
+    }
     pClient = c;
     link = c;
-    pTimeout = setTimeout(() => { if (pClient === c && !pStarted) practiceFail(pc.unreachable); }, CONNECT_TIMEOUT_MS);
+    pTimeout = setTimeout(() => { if (pClient === c && !pStarted) { if (showMode) { setTimeout(() => { if (showMode && pClient === c) void startPractice(); }, 2500); } else practiceFail(pc.unreachable); } }, CONNECT_TIMEOUT_MS);
     c.on("status", ({ status }) => {
       if (pClient !== c) return;
-      if (status === "ready") c.practice(clean, connectedAddress() ?? undefined);
-      else if (status === "closed" && !pEnded) practiceFail(pStarted ? pc.lost : pc.unreachable);
+      if (status === "ready") {
+        if (showMode) c.liveWatch();
+        else c.practice(clean, connectedAddress() ?? undefined, currentDifficulty(), (document.getElementById("play-now-mode") as HTMLSelectElement | null)?.value === "survival" ? "survival" : undefined);
+      }
+      else if (status === "closed" && !pEnded) {
+        // The live arena never gives up: when the connection drops (a server update, a bad network) it connects again by itself.
+        if (showMode) {
+          if (livePanel) {
+            const t = livePanel.querySelector<HTMLElement>("[data-live-text]");
+            if (t) t.textContent = pc.liveReconnecting;
+          }
+          setTimeout(() => { if (showMode && pClient === c) void startPractice(); }, 2500);
+          return;
+        }
+        practiceFail(pStarted ? pc.lost : pc.unreachable);
+      }
     });
     c.on("entered", (m) => { pRoom = m.roomId; });
+    c.on("live", (m) => { if (pClient === c) onLive(m); });
+    c.on("skins", (m) => { if (pClient === c) arena?.setPlayerSkins(m.map); });
     c.on("start", (m) => {
       if (pClient !== c) return;
       pRoom = m.roomId;
@@ -575,6 +818,7 @@ function createShell(d: ShellData): ArenaShell {
   }
 
   function practiceEnd(m: End) {
+    window.dispatchEvent(new Event("goshi-leave-fs"));
     endFrenzy();
     pEnded = true;
     const { btn, msg, leave } = cardEls();
@@ -620,7 +864,8 @@ function createShell(d: ShellData): ArenaShell {
     if (m.record) {
       const rec = m.record;
       const rr = pc.record;
-      const http = d.settings.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+      // The record lives on the server that ran the practice match.
+      const http = practiceUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
       const url = `${http}/replay/${encodeURIComponent(m.roomId)}/arena`;
       const status = node("p", { class: "demo-note", attrs: { role: "status", "aria-live": "polite" } });
       const check = node("button", { class: "btn btn-glass btn-sm", text: rr.check, attrs: { type: "button" } });
@@ -651,7 +896,7 @@ function createShell(d: ShellData): ArenaShell {
       const label = r.role === "saboteur" ? ` (${pc.saboteur})` : "";
       return node("li", {
         class: r.w === you ? "me" : "",
-        text: `${r.w === you ? `${nameOf(r.w)} (${live.game.you})` : nameOf(r.w)}${label}: ${Math.round(r.score * 10) / 10}`,
+        text: `${r.w === you ? `${nameOf(r.w)} (${youWord(walletNow(), live.game.you)})` : nameOf(r.w)}${label}: ${Math.round(r.score * 10) / 10}`,
       });
     })));
     const again = node("button", { class: "btn btn-gold btn-lg", text: live.result.rematch, attrs: { type: "button", id: "play-again" } });
@@ -697,7 +942,7 @@ function createShell(d: ShellData): ArenaShell {
     const seat = (w: string | undefined) => {
       if (!w) return node("li", { class: "seat empty", text: as.empty });
       const me = w === v.you;
-      return node("li", { class: me ? "seat me" : "seat", text: me ? `${v.short(w)} (${live.game.you})` : v.short(w) });
+      return node("li", { class: me ? "seat me" : "seat", text: me ? `${v.short(w)} (${youWord(w, live.game.you)})` : v.short(w) });
     };
     q("[data-lv-paid]")?.replaceChildren(...Array.from({ length: 10 }, (_, i) => seat(v.paid[i])));
     q("[data-lv-free]")?.replaceChildren(...Array.from({ length: 3 }, (_, i) => seat(v.free[i])));
@@ -709,6 +954,25 @@ function createShell(d: ShellData): ArenaShell {
       fillBtn.hidden = !v.canFill;
       setText(fillBtn, fill(as.fill, { network: v.network }));
       fillBtn.onclick = () => v.onFill();
+    }
+    const sh = q<HTMLButtonElement>("[data-lv-share]");
+    if (sh) {
+      setText(sh, as.share);
+      sh.onclick = async () => {
+        const url = new URL(location.href);
+        url.search = "";
+        url.hash = "";
+        url.searchParams.set("room", v.roomId);
+        try {
+          if (typeof navigator.share === "function" && matchMedia("(pointer: coarse)").matches) {
+            await navigator.share({ title: "Goshi", text: `${as.shareText}\nPhantom: https://phantom.app/ul/browse/${encodeURIComponent(url.toString())}?ref=${encodeURIComponent(location.origin)}`, url: url.toString() });
+          } else {
+            await navigator.clipboard.writeText(url.toString());
+            setText(sh, as.shareCopied);
+            setTimeout(() => setText(sh, as.share), 3000);
+          }
+        } catch { /* closed share sheet or no clipboard: nothing to do */ }
+      };
     }
     const pr = q<HTMLButtonElement>("[data-lv-practice]");
     if (pr) {
@@ -742,12 +1006,32 @@ function createShell(d: ShellData): ArenaShell {
       cardBound = true;
       const { btn, name, leave } = cardEls();
       name.value = savedName();
-      btn.addEventListener("click", () => void startPractice());
+      btn.addEventListener("click", () => { leaveLiveMode(); void startPractice(); });
+      // The live arena, straight in: one button on the page, no link to know.
+      document.getElementById("play-live-btn")?.addEventListener("click", () => {
+        document.querySelector(".tv-gate")?.remove();
+        enterLiveArena(true);
+      });
       leave.addEventListener("click", () => stopPractice());
       name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); void startPractice(); } });
-      q("[data-dead-again]")?.addEventListener("click", () => void startPractice());
+      q("[data-dead-again]")?.addEventListener("click", () => { if (showMode) liveJoin(); else void startPractice(); });
       // The home page sends people here with ?play=1: start at once, no second click.
       const params = new URLSearchParams(location.search);
+      if (params.get("show") === "1") {
+        // One click opens it (the browser only plays sound after a click) and the show runs by itself.
+        const gate = document.createElement("div");
+        gate.className = "tv-gate";
+        const play = document.createElement("button");
+        play.type = "button"; play.className = "btn btn-gold btn-lg"; play.textContent = pc.liveJoin;
+        play.addEventListener("click", () => { gate.remove(); enterLiveArena(true); });
+        const go = document.createElement("button");
+        go.type = "button"; go.className = "btn btn-glass btn-lg"; go.textContent = pc.liveWatchOnly;
+        go.addEventListener("click", () => { gate.remove(); enterLiveArena(false); });
+        gate.className = "tv-gate tv-gate-two";
+        gate.append(play);
+        gate.append(go);
+        document.body.append(gate);
+      }
       if (params.get("play") === "1") {
         params.delete("play");
         const rest = params.toString();

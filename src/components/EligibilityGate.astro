@@ -12,7 +12,7 @@ interface Props { lang: Lang }
 const { lang } = Astro.props;
 const g = copy[lang].play.gate;
 const net = !isMainnet(site.play.cluster);
-const netName = site.play.cluster === "testnet" ? "Testnet" : "Devnet";
+const netName = site.play.cluster === "mainnet-beta" ? "Mainnet" : site.play.cluster === "testnet" ? "Testnet" : "Devnet";
 ---
 <fieldset class="play-gate glass" id="play-gate">
   <legend>{g.legend}</legend>

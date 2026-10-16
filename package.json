@@ -7,7 +7,7 @@
     "dev": "astro dev",
     "dev:play": "PUBLIC_PLAY_LOCAL=1 astro dev",
     "play:local-config": "node scripts/play-local-config.mjs",
-    "build": "astro build && node scripts/prune-play.mjs && node scripts/check-dist.mjs",
+    "build": "node scripts/build-standalone.mjs && astro build && node scripts/prune-play.mjs && node scripts/check-dist.mjs",
     "build:only": "astro build",
     "preview": "astro preview",
     "check": "astro check",

@@ -19,7 +19,10 @@ export interface Item {
   proof: { seedReveal: string; blockhash: string; snapshot: { mass: Record<string, number> }; replays: { w: string; hash: string }[] } | null;
 }
 export type Strings = Record<string, string> & { paint: Record<string, string> };
-export interface Options { api: string; t: Strings; focus?: string | null; onClose?: () => void }
+export interface ViewerControls { toggle(): void; setSpeed(v: number): void; getSpeed(): number; seekBy(seconds: number): void }
+export interface Options { api: string; t: Strings; focus?: string | null; onClose?: () => void; /** TV mode: open on this tab, at this speed, and call onEnd once the arena replay reaches its end. */ startTab?: "minute" | "arena"; /** Play the minute of frenzy and then the arena by itself. */ chain?: boolean; startSpeed?: number; onEnd?: () => void }
+
+const standalone = (): boolean => (globalThis as { __GOSHI_STANDALONE__?: boolean }).__GOSHI_STANDALONE__ === true;
 
 const SYM = ["SOL", "DOGE", "AVAX", "ETH", "BNB", "BTC"];
 const SYM_COLOR = SYM.map((s) => COINS.find((c) => c[0] === s)?.[1] ?? "#fff");
@@ -39,6 +42,17 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
   try { const r = await fetch(url); return r.ok ? new Uint8Array(await r.arrayBuffer()) : null; } catch { return null; }
 }
 
+/** The raw files of a match of the archive: the arena record and the minute of each player. */
+export async function fetchRoomFiles(api: string, it: Item): Promise<{ arena: Uint8Array | null; files: { w: string; bytes: Uint8Array | null }[] }> {
+  const room = it.roomId;
+  const wallets = it.proof?.replays.filter((r) => r.w !== "arena").map((r) => r.w) ?? [];
+  const [arena, files] = await Promise.all([
+    fetchBytes(`${api}/replay/${encodeURIComponent(room)}/arena`),
+    Promise.all(wallets.map((w) => fetchBytes(`${api}/replay/${encodeURIComponent(room)}/${encodeURIComponent(w)}`))),
+  ]);
+  return { arena, files: files.map((bytes, i) => ({ w: wallets[i], bytes })) };
+}
+
 /** Opens the viewer for a room of the archive. Returns a function that stops it. */
 export async function mountRoom(host: HTMLElement, room: string, o: Options, item?: Item | null): Promise<() => void> {
   host.replaceChildren(el("p", "muted", o.t.loading));
@@ -49,32 +63,41 @@ export async function mountRoom(host: HTMLElement, room: string, o: Options, ite
     fetchBytes(`${o.api}/replay/${encodeURIComponent(room)}/arena`),
     Promise.all(wallets.map((w) => fetchBytes(`${o.api}/replay/${encodeURIComponent(room)}/${encodeURIComponent(w)}`))),
   ]);
+  return mountData(host, dataFromFiles(it, arena, files.map((bytes, i) => ({ w: wallets[i], bytes }))), o);
+}
+
+/** What the viewer needs, built from the raw files of a match: the arena record and one minute file per player. */
+export function dataFromFiles(item: Item | null, arena: Uint8Array | null, files: { w: string; bytes: Uint8Array | null }[], title?: string): Data {
   const runs: Run[] = [];
+  const kept: { w: string; bytes: Uint8Array }[] = [];
   let map: FrenzyMap | null = null;
-  files.forEach((b, i) => {
-    if (!b || !it.proof) return;
+  for (const f of files) {
+    if (!f.bytes || !item?.proof) continue;
     try {
-      const rep = decodeReplay(b);
-      map ??= mapFor(rep.seed, it.proof.snapshot.mass as never);
-      runs.push(runMinute(map, wallets[i], b));
+      const rep = decodeReplay(f.bytes);
+      map ??= mapFor(rep.seed, item.proof.snapshot.mass as never);
+      runs.push(runMinute(map, f.w, f.bytes));
+      kept.push({ w: f.w, bytes: f.bytes });
     } catch { /* a damaged file: that player is left out */ }
-  });
-  return mountViewer(host, { item: it, runs, map, arena }, o);
+  }
+  return { item, runs, map, arena, title, files: kept };
 }
 
 /** Opens the viewer for one arena record file (the minute is not in it). */
 export function mountArenaFile(host: HTMLElement, bytes: Uint8Array, title: string, o: Options): () => void {
   try { decodeRecord(bytes); } catch { host.replaceChildren(el("p", "muted", o.t.badFile)); return () => {}; }
-  return mountViewer(host, { item: null, runs: [], map: null, arena: bytes, title }, o);
+  return mountData(host, dataFromFiles(null, bytes, [], title), o);
 }
 
-interface Data { item: Item | null; runs: Run[]; map: FrenzyMap | null; arena: Uint8Array | null; title?: string }
+export interface Data { item: Item | null; runs: Run[]; map: FrenzyMap | null; arena: Uint8Array | null; title?: string; files: { w: string; bytes: Uint8Array }[] }
 
-function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
+/** Mounts the viewer on data that is already in memory (a room of the archive, a file, or the data inside a downloaded page). */
+export function mountData(host: HTMLElement, d: Data, o: Options): () => void {
   const { t } = o;
   const hasMinute = d.runs.length > 0 && !!d.map;
   const hasArena = !!d.arena;
-  let tab: "minute" | "arena" = hasMinute ? "minute" : "arena";
+  let tab: "minute" | "arena" = o.startTab === "arena" && hasArena ? "arena" : hasMinute ? "minute" : "arena";
+  let endedOnce = false;
   let raf = 0, dead = false;
 
   const root = el("div", "mv glass");
@@ -101,35 +124,63 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
   grid.append(stageBox, side);
   const bar = el("div", "mv-bar");
   const playBtn = el("button", "btn btn-gold btn-sm", t.pause); playBtn.type = "button";
-  const speedSel = el("select"); for (const s of [1, 2, 4, 8]) speedSel.append(new Option(`x${s}`, String(s)));
+  const speedSel = el("select"); for (const s of [0.5, 1, 2, 4, 8]) speedSel.append(new Option(`x${s}`, String(s)));
   const viewSel = el("select");
   const followSel = el("select");
   const clock = el("span", "muted small mv-clock");
+  const markBtn = el("button", "btn btn-glass btn-sm", t.markPlayer); markBtn.type = "button"; markBtn.setAttribute("aria-pressed", "false");
+  const hint = el("p", "muted small mv-hint", t.tapHint);
   const canRecord = typeof MediaRecorder !== "undefined" && typeof HTMLCanvasElement !== "undefined" && "captureStream" in HTMLCanvasElement.prototype;
   const recBtn = el("button", "btn btn-glass btn-sm", t.recordHd); recBtn.type = "button";
   const recMsg = el("p", "muted small mv-recmsg"); recMsg.setAttribute("role", "status"); recMsg.hidden = true;
   const seek = el("input"); seek.type = "range"; seek.min = "0"; seek.step = "1"; seek.className = "mv-seek"; seek.setAttribute("aria-label", t.time);
   const lab = (text: string, c: HTMLElement) => { const l = el("label", "", text + " "); l.append(c); return l; };
-  bar.append(playBtn, lab(t.speed, speedSel), lab(t.follow, followSel), lab(t.view, viewSel));
+  bar.append(playBtn, lab(t.speed, speedSel), lab(t.follow, followSel), lab(t.view, viewSel), markBtn);
   if (canRecord) bar.append(recBtn);
   bar.append(clock);
   const chart = el("canvas", "mv-chart");
   chart.setAttribute("aria-hidden", "true");
   const extra = el("div", "mv-extra");
   const links = el("p", "mv-links small");
-  root.append(head, note, grid, seek, bar, recMsg, chart, extra, links);
+  root.append(head, note, grid, hint, seek, bar, recMsg, chart, extra, links);
   host.replaceChildren(root);
   if (d.item && d.item.proof) {
     const v = el("a", "link-btn small", t.verifyLink); v.href = `${t.verifyHref}#${encodeURIComponent(d.item.roomId)}`;
     links.append(v);
-    if (d.arena) { const a = el("a", "link-btn small", t.downloadLink); a.href = `${o.api}/replay/${encodeURIComponent(d.item.roomId)}/arena`; a.rel = "noopener noreferrer"; a.target = "_blank"; links.append(a); }
+    if (d.arena && o.api) { const a = el("a", "link-btn small", t.downloadLink); a.href = `${o.api}/replay/${encodeURIComponent(d.item.roomId)}/arena`; a.rel = "noopener noreferrer"; a.target = "_blank"; links.append(a); }
+  }
+  // The whole replay as one page that works offline: the viewer, the records and everything to follow or mark any player.
+  if (!standalone() && (d.arena || d.files.length > 0) && t.downloadInteractive) {
+    const dl = el("button", "link-btn small", t.downloadInteractive); dl.type = "button";
+    dl.addEventListener("click", async () => {
+      dl.disabled = true;
+      const label = dl.textContent;
+      dl.textContent = t.preparingFile;
+      try {
+        const { downloadInteractive } = await import("../lib/play/standalone-export.ts");
+        await downloadInteractive({
+          item: d.item, arena: d.arena, files: d.files, t: t as unknown as Record<string, unknown>, title: d.title,
+          fileName: `goshi-${d.item?.roomId ?? "match"}-interactive.html`,
+        });
+        dl.textContent = label;
+      } catch {
+        dl.textContent = t.downloadFailed || label;
+      } finally {
+        dl.disabled = false;
+      }
+    });
+    links.append(dl);
   }
 
   const g = canvas.getContext("2d")!;
   const cg = chart.getContext("2d")!;
-  let playing = true, speed = 1, last = 0, boardAt = 0;
+  let playing = true, speed = o.startSpeed ?? 1, last = 0, boardAt = 0;
   let followed = "";
   let zoom: "full" | "follow" = "full";
+  // Tap a player to follow them, tap again to mark them (a ring that pulses, a star and the name, whoever the camera follows).
+  const marked = new Set<string>();
+  let hits: { w: string; x: number; y: number; r: number }[] = [];
+  let collect = false;
 
   // ---- minute state
   const N = FRENZY.ticks;
@@ -199,6 +250,7 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
     seek.value = String(tab === "minute" ? mTick : rp?.tick ?? 0);
     fillSelects();
     buildExtra();
+    refreshMarkBtn();
     setPlaying(true);
   }
   tabMinute.addEventListener("click", () => setTab("minute"));
@@ -216,7 +268,7 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
   });
   speedSel.addEventListener("change", () => { speed = Number(speedSel.value) || 1; });
   viewSel.addEventListener("change", () => { zoom = viewSel.value === "follow" ? "follow" : "full"; });
-  followSel.addEventListener("change", () => { followed = followSel.value; buildExtra(); });
+  followSel.addEventListener("change", () => { followed = followSel.value; buildExtra(); refreshMarkBtn(); });
   seek.addEventListener("input", () => {
     const v = Number(seek.value);
     if (tab === "minute") mTick = v;
@@ -224,8 +276,13 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
   });
   // Full screen: the whole viewer (map, controls and list). The Fullscreen API where it exists; on a phone, a fixed layer.
   let full = false;
+  // A fixed layer inside a card with a blur or a transform is positioned against the card, not the screen (that is how it
+  // stayed small on a phone): in full screen the viewer lives directly under <body> and goes back where it was afterwards.
+  const holder = document.createComment("mv");
   const setFull = (on: boolean) => {
     full = on;
+    if (on && root.parentNode && root.parentNode !== document.body) { root.parentNode.insertBefore(holder, root); document.body.append(root); }
+    else if (!on && holder.parentNode) holder.replaceWith(root);
     root.classList.toggle("mv-full", on);
     document.documentElement.style.overflow = on ? "hidden" : "";
     fsBtn.textContent = on ? "✕" : "⛶";
@@ -245,6 +302,41 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
   });
   const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape" && full && !document.fullscreenElement) setFull(false); };
   document.addEventListener("keydown", onEsc);
+
+  // ---- tap a player on the map: follow them; tap the same one again: mark / unmark
+  function refreshMarkBtn() {
+    const on = !!followed && followed !== "auto" && marked.has(followed);
+    markBtn.setAttribute("aria-pressed", String(on));
+    markBtn.textContent = on ? t.unmarkPlayer : t.markPlayer;
+    markBtn.disabled = !followed || followed === "auto";
+  }
+  function toggleMark(w: string) {
+    if (marked.has(w)) marked.delete(w); else marked.add(w);
+    refreshMarkBtn();
+    boardAt = 0;
+  }
+  function follow(w: string) {
+    followed = w;
+    zoom = "follow";
+    fillSelects();
+    buildExtra();
+    refreshMarkBtn();
+    boardAt = 0;
+  }
+  markBtn.addEventListener("click", () => { if (followed && followed !== "auto") toggleMark(followed); });
+  canvas.addEventListener("click", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const k = canvas.width / rect.width;
+    const px = (e.clientX - rect.left) * k, py = (e.clientY - rect.top) * (canvas.height / rect.height);
+    let best: { w: string; d: number } | null = null;
+    for (const h of hits) {
+      const dd = Math.hypot(h.x - px, h.y - py);
+      if (dd <= Math.max(h.r * 1.8, 30 * k) && (!best || dd < best.d)) best = { w: h.w, d: dd };
+    }
+    if (!best) return;
+    if (best.w === followed) toggleMark(best.w); else follow(best.w);
+  });
 
   // ---- the tables under the map
   function buildExtra() {
@@ -276,7 +368,7 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
         tr.tabIndex = 0;
         const cells = [`#${i + 1}`, nameOf(r.w), r.final.m.toFixed(1), String(r.final.eaten), String(r.final.hits), String(r.final.btc), r.final.nitroS.toFixed(1)];
         cells.forEach((c) => tr.append(el("td", "", c)));
-        tr.addEventListener("click", () => { followed = r.w; fillSelects(); buildExtra(); });
+        tr.addEventListener("click", () => { followed = r.w; fillSelects(); buildExtra(); refreshMarkBtn(); });
         tb.append(tr);
       });
       tbl.append(tb);
@@ -358,6 +450,22 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
     return 0;
   }
 
+  /** A marked player: a pulsing gold ring, a star and the name, so it can be found at a glance in a crowd. */
+  function drawMark(g: CanvasRenderingContext2D, x: number, y: number, R: number, dpr: number, name: string) {
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 220);
+    g.save();
+    g.lineJoin = "round";
+    g.strokeStyle = "rgba(5,8,25,0.85)"; g.lineWidth = (5 + pulse) * dpr;
+    g.beginPath(); g.arc(x, y, R * (1.9 + 0.3 * pulse) + 3 * dpr, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = "#ffd84a"; g.lineWidth = (2.6 + pulse) * dpr;
+    g.beginPath(); g.arc(x, y, R * (1.9 + 0.3 * pulse) + 3 * dpr, 0, Math.PI * 2); g.stroke();
+    g.font = `900 ${Math.round(13 * dpr)}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "bottom";
+    g.lineWidth = 4 * dpr; g.strokeStyle = "rgba(5,8,25,0.9)"; g.fillStyle = "#ffd84a";
+    const label = `\u2605 ${name}`;
+    g.strokeText(label, x, y - R * 2.4 - 6 * dpr); g.fillText(label, x, y - R * 2.4 - 6 * dpr);
+    g.restore();
+  }
+
   /** The map of the minute with everybody on it, in the rectangle of the surface. */
   function drawMinute(s: Surf, tf: number) {
     const map = d.map!, { g, x: X, y: Y, w: W, h: H, dpr } = s;
@@ -418,7 +526,9 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
       const mine = r.w === followed;
       const m = r.ms[t0];
       const R = Math.max((mine ? 7.5 : 5.5) * dpr, 15 * scale * (1 + Math.min(0.8, (m - 20) / 140)));
+      if (collect) hits.push({ w: r.w, x, y, r: R });
       drawHead(g, x, y, R, headingAt(r, t0), colorFor(r.w), r.stun[t0] > 0, mine, dpr);
+      if (marked.has(r.w)) drawMark(g, x, y, R, dpr, shortAddress(r.w));
       if (mine || zoom === "follow" || d.runs.length <= 4) {
         g.fillStyle = "#fff"; g.strokeStyle = "rgba(5,8,25,0.8)"; g.lineWidth = 3 * dpr;
         g.strokeText(shortAddress(r.w), x, y - R * 1.5 - 3 * dpr); g.fillText(shortAddress(r.w), x, y - R * 1.5 - 3 * dpr);
@@ -483,6 +593,19 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
       g: s.g, W: s.w, H: s.h, dpr: s.dpr, now: nowMs, players, zone: zoneOf(rp.arena), orbs, world: { w: 3000, h: 3000 }, you: focus?.w ?? "", cam, scale, shake: [0, 0],
       meAlive: !!focus && focus.alive, myMass: focus?.m ?? 0, boosting: false, protectLeft: 0, hasState: true, floaters: [], reduced: false, strings: t.paint as never,
     });
+    // On top of the painter: the heads that can be tapped, and the marks (the painter leaves the screen space transform in place).
+    const g = s.g;
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+    for (const p of players) {
+      if (!p.alive) continue;
+      const x = (p.head[0] - cam.x) * scale + s.w / 2, y = (p.head[1] - cam.y) * scale + s.h / 2;
+      const R = Math.max(9 * s.dpr, p.r * scale);
+      if (collect) hits.push({ w: p.w, x, y, r: R });
+      if (marked.has(p.w)) drawMark(g, x, y, R, s.dpr, shortAddress(p.w));
+    }
+    g.restore();
   }
 
   // ---- the effects of the arena (eaten rings, death bursts), fed from what each tick did
@@ -517,11 +640,11 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
       rows = cur.map((p) => ({ w: p.w, m: p.m, out: !p.alive })).sort((a, b) => (a.out === b.out ? b.m - a.m : a.out ? 1 : -1));
     }
     board.replaceChildren(...rows.slice(0, 12).map((r, i) => {
-      const li = el("li", `${r.out ? "out" : ""}${r.w === followed ? " me" : ""}`);
+      const li = el("li", `${r.out ? "out" : ""}${r.w === followed ? " me" : ""}${marked.has(r.w) ? " mk" : ""}`);
       const dot = el("i"); dot.style.background = colorFor(r.w);
-      li.append(dot, el("span", "", `${i + 1}. ${nameOf(r.w)}`), el("em", "", r.out ? t.died : String(Math.round(r.m))));
+      li.append(dot, el("span", "", `${i + 1}. ${marked.has(r.w) ? "\u2605 " : ""}${nameOf(r.w)}`), el("em", "", r.out ? t.died : String(Math.round(r.m))));
       li.tabIndex = 0;
-      li.addEventListener("click", () => { followed = r.w; fillSelects(); buildExtra(); });
+      li.addEventListener("click", () => { followed = r.w; fillSelects(); buildExtra(); refreshMarkBtn(); });
       return li;
     }));
   }
@@ -632,11 +755,13 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
       if (playing) {
         acc += dt * speed * FRENZY.tickRate;
         if (acc >= 1) { mTick = Math.min(N, mTick + Math.floor(acc)); acc -= Math.floor(acc); }
-        if (mTick >= N) { mTick = N; acc = 0; setPlaying(false); }
+        if (mTick >= N) { mTick = N; acc = 0; setPlaying(false); if (o.chain && hasArena) setTab("arena"); }
         seek.value = String(mTick);
       }
       const tf = Math.min(N, mTick + (playing ? acc : 0));
+      hits = []; collect = true;
       drawMinute(vis, tf);
+      collect = false;
       drawChart(size(chart), tf);
       clock.textContent = `${mmss(tf / FRENZY.tickRate)} / 1:00`;
       if (rec && rec.tab === "minute") { drawRecMinute(rec, tf); finished = mTick >= N; }
@@ -646,15 +771,18 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
         let n = 0;
         while (acc >= TICK_S && n < 40) {
           acc -= TICK_S;
-          if (!rp.step()) { acc = 0; setPlaying(false); break; }
+          if (!rp.step()) { acc = 0; setPlaying(false); if (!endedOnce) { endedOnce = true; o.onEnd?.(); } break; }
           arenaEffects();
           n++;
         }
         if (n > 0) { refreshArena(); seek.value = String(rp.tick); }
         if (rp.done && playing) setPlaying(false);
+        if (rp.done && !endedOnce) { endedOnce = true; o.onEnd?.(); }
         if (!reduced) for (const pt of painters()) pt.fx.step(dt);
       }
+      hits = []; collect = true;
       drawArena(vis, painter, nowMs);
+      collect = false;
       const alive = cur.filter((p) => p.alive).length;
       clock.textContent = `${mmss(Math.min(rp.rec.matchMs / 1000, rp.seconds))} · ${alive}/${cur.length} ${t.alive}`;
       if (rec && rec.tab === "arena") { drawRecArena(rec, nowMs); finished = rp.done; }
@@ -679,5 +807,18 @@ function mountViewer(host: HTMLElement, d: Data, o: Options): () => void {
   tabArena.classList.toggle("on", tab === "arena");
   setTab(tab);
   raf = requestAnimationFrame(frame);
+  // Controls for a page that wants its own buttons (the television mode): play or pause, speed and jumps in the replay.
+  const ctl: ViewerControls = {
+    toggle: () => playBtn.click(),
+    setSpeed: (v) => { speed = v; speedSel.value = String(v); },
+    getSpeed: () => speed,
+    seekBy: (sec) => {
+      const step = tab === "minute" ? FRENZY.tickRate : 1 / TICK_S;
+      const v = Math.max(0, Math.min(Number(seek.max) || 0, Number(seek.value) + sec * step));
+      seek.value = String(Math.round(v));
+      seek.dispatchEvent(new Event("input"));
+    },
+  };
+  (stop as unknown as { ctl: ViewerControls }).ctl = ctl;
   return stop;
 }

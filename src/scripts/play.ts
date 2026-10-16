@@ -1,6 +1,7 @@
 // Client side of the on-chain games page. Loaded only when site.play is enabled.
 // The Anchor client (and web3.js with it) is imported lazily, the first time the page needs the network.
 // Everything shown comes from textContent, never from HTML strings, so no value can inject markup.
+import { chooseRegion, regionOfRoom } from "../lib/play/region.ts";
 import { Buffer } from "buffer";
 import { formatAmount, formatLamports } from "../lib/play/amounts.ts";
 import { royalePot, settleRoyale, settleVs } from "../lib/play/split.ts";
@@ -17,6 +18,13 @@ import { getShell } from "./arena-shell.ts";
 import { fetchFeeOptions } from "../lib/play/fee-options.ts";
 import { SpendGuard, feeLabel, solText, usdText, type FeeOption } from "../lib/play/quick.ts";
 import type { PlayCopy } from "../content/types.ts";
+import { startPlayFocus } from "./play-focus.ts";
+import { mountBoostSetup } from "./boost-placement.ts";
+import { setYouLabel } from "../lib/play/you-marker.ts";
+import { youWord, enableStaffLabels } from "../lib/play/staff.ts";
+import { needsWalletBrowser, phantomLink, solflareLink } from "../lib/play/deeplink.ts";
+import { duelPrize, royalePrizes, vsPrizes } from "../lib/play/prizes.ts";
+import { setLeadStrings } from "../lib/play/lead-strings.ts";
 
 interface Data {
   locale: string;
@@ -26,7 +34,7 @@ interface Data {
   symbol: string;
   unitSol: string;
   unitGoshi: string;
-  settings: ConstructorParameters<typeof PlayClient>[0] & { serverUrl: string };
+  settings: ConstructorParameters<typeof PlayClient>[0] & { serverUrl: string; regions?: { id: string; url: string }[]; regionSlot?: number };
   walletNames: Record<WalletId, string>;
   homeHref: string;
   t: {
@@ -51,6 +59,19 @@ if (dataEl && document.getElementById("play-main")) void boot(JSON.parse(dataEl.
 
 async function boot(d: Data) {
   const t = d.t;
+  // One game server per region: everything on this page (rooms, duels, practice) talks to the one chosen here.
+  const regions = d.settings.regions ?? [];
+  if (regions.length > 1) {
+    const qs = new URLSearchParams(location.search);
+    const slot = await chooseRegion(regions, qs.get("duel") ?? qs.get("room"));
+    d.settings.serverUrl = regions[slot].url;
+    d.settings.regionSlot = slot;
+  }
+  startPlayFocus(t.live.arenaState.showAll);
+  { const a = t.live.arenaState; mountBoostSetup({ boost: a.boostWord, left: a.boostLeft, right: a.boostRight, bigger: a.boostBigger, smaller: a.boostSmaller }); }
+  enableStaffLabels(d.cluster === "mainnet-beta");
+  setYouLabel(t.live.game.you);
+  setLeadStrings({ top: t.live.arenaState.leadTop, youLead: t.live.arenaState.leadYou, youBehind: t.live.arenaState.leadBehind });
   const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   const sol = (lamports: bigint) => formatLamports(lamports, { locale: d.locale });
   const withSol = (lamports: bigint) => `${sol(lamports)} ${d.unitSol}`;
@@ -75,6 +96,8 @@ async function boot(d: Data) {
   let rooms: RoomView[] = [];
   /** The rooms shown in the list: every room except the private duels. */
   let publicRooms: RoomView[] = [];
+  /** The test bots of the server (devnet only), to say how many seats of a room are people. */
+  let botSet = new Set<string>();
   let selected: bigint | null = null;
   let accepted = false;
   let busy = false;
@@ -382,6 +405,7 @@ async function boot(d: Data) {
   $("play-disconnect").addEventListener("click", () => void disconnectWallet());
 
   function onWalletChange(s: WalletState) {
+    setYouLabel(youWord(s.status === "connected" ? s.address : null, t.live.game.you));
     const connecting = s.status === "connecting";
     document.querySelectorAll<HTMLButtonElement>("[data-connect]").forEach((b) => {
       b.disabled = connecting;
@@ -454,6 +478,23 @@ async function boot(d: Data) {
   // ------------------------------------------------------------------ rooms
   const STATE_CLASS: Record<RoomState, string> = { waiting: "s-next", active: "s-optional" };
 
+  /** Who sits and what each place wins in this room (the rules of the program), with the test bots told apart on devnet. */
+  function prizeText(r: RoomView): string {
+    const bots = r.paid.filter((w) => botSet.has(w)).length;
+    const seats = bots > 0 ? fill(t.rooms.seatsBots, { h: r.paid.length - bots, b: bots }) : fill(t.rooms.seatsPeople, { h: r.paid.length });
+    let prize: string;
+    if (r.mode === "royale") {
+      const p = royalePrizes(r.entryFee);
+      prize = fill(t.rooms.prizeRoyale, { fee: sol(r.entryFee), pot: sol(p.pot), unit: d.unitSol, a: sol(p.first), b: sol(p.second), c: sol(p.third), s: sol(p.saboteurPool) });
+    } else if (r.mode === "vs") {
+      const p = vsPrizes(r.entryFee, BigInt(Math.max(2, r.paid.length)));
+      prize = fill(t.rooms.prizeVs, { fee: sol(r.entryFee), unit: d.unitSol, a: sol(p.winner), b: sol(p.loser) });
+    } else {
+      prize = fill(t.rooms.prizeDuel, { fee: sol(r.entryFee), unit: d.unitSol, a: sol(duelPrize(r.entryFee, BigInt(Math.max(2, r.paid.length))).winner) });
+    }
+    return `${seats}. ${prize}${bots > 0 ? ` ${t.rooms.botsNote}` : ""}`;
+  }
+
   function renderRooms() {
     const wallet0 = me();
     const minHolder = chain?.minHolder ?? null;
@@ -517,6 +558,7 @@ async function boot(d: Data) {
         }
         return node("li", { class: "room", attrs: { "data-selected": String(selected === r.roomId) } }, [
           node("div", { class: "room-head" }, [node("h3", { text: fill(t.rooms.roomName, { id }) }), chips]),
+          node("p", { class: "room-prizes muted small", text: prizeText(r) }),
           node("dl", {}, [
             node("div", {}, [node("dt", { text: t.rooms.fee }), node("dd", { text: withSol(r.entryFee) })]),
             node("div", {}, [node("dt", { text: t.rooms.pot }), node("dd", { text: withSol(roomPot(r)) })]),
@@ -530,12 +572,27 @@ async function boot(d: Data) {
     );
   }
 
+  // A wallet seated in a match that is running goes back into it by itself: after a reload, with the same link or from another tab.
+  let resumedFor: string | null = null;
+  function resumeSeatedMatch() {
+    const w = wallet.current;
+    if (!live || w.status !== "connected") return;
+    const mine = rooms.find((r) => r.state === "active" && (r.paid.includes(w.address) || r.free.includes(w.address)));
+    if (!mine) { resumedFor = null; return; }
+    const id = mine.roomId.toString();
+    if (resumedFor === id) return;
+    resumedFor = id;
+    live.resume(id);
+  }
+
   async function refreshRooms() {
     if (firstLoad) setText(roomsMsg, t.rooms.loading);
     try {
       const c = await getClient();
       chain = await c.verifyConfig();
       rooms = await c.listRooms();
+      // Only the rooms of this region: the others are run by another server (pick that region to see them).
+      if (regions.length > 1) rooms = rooms.filter((x) => regionOfRoom(x.roomId, regions) === (d.settings.regionSlot ?? 0));
       // Private duels are reached by their link, not from the public list.
       try {
         const r = await fetch(`${d.settings.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:")}/duels`);
@@ -543,12 +600,18 @@ async function boot(d: Data) {
         const hidden = new Set(j.ids);
         publicRooms = rooms.filter((x) => !hidden.has(x.roomId.toString()));
       } catch { publicRooms = rooms; }
+      try {
+        const lr = await fetch(`${d.settings.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:")}/live`);
+        const lj = (await lr.json()) as { bots?: string[] };
+        botSet = new Set(lj.bots ?? []);
+      } catch { /* the page still works without the bot list */ }
       firstLoad = false;
       setText(roomsMsg, publicRooms.length === 0 ? t.rooms.empty : "");
       setText(updatedEl, fill(t.rooms.updated, { time: new Date().toLocaleTimeString(d.locale) }));
       if (selected !== null && !rooms.some((r) => r.roomId === selected)) selected = null;
       renderRooms();
       renderPot();
+      resumeSeatedMatch();
     } catch (err) {
       setText(roomsMsg, fill(t.rooms.loadError, { reason: errText(classifyError(err)) }));
     }
@@ -813,7 +876,7 @@ async function boot(d: Data) {
     duelStart.onclick = () => { if (live) live.startDuel(id); };
     if (typeof navigator.share === "function") {
       duelNative.hidden = false;
-      duelNative.onclick = () => { void navigator.share({ title: "Goshi", text: dt.shareText, url: duelLink.value }).catch(() => undefined); };
+      duelNative.onclick = () => { void navigator.share({ title: "Goshi", text: `${dt.shareText}\nPhantom: ${phantomLink(duelLink.value, location.origin)}`, url: duelLink.value }).catch(() => undefined); };
     }
     duelSay(`${dt.created} ${dt.waiting.replace("{n}", "1").replace("{max}", String(expected))}`);
   }
@@ -868,9 +931,93 @@ async function boot(d: Data) {
     await refreshRooms();
     const room = rooms.find((x) => x.roomId.toString() === roomId);
     if (!room || room.state !== "waiting") { duelSay(dt.gone); return; }
-    if (room.paid.length >= 5) { duelSay(dt.full); return; }
+    if (room.guests.length > 0 && room.paid.length >= 5) { duelSay(dt.full); return; }
     const ok = await onJoin(room.roomId, false);
     if (ok) { spend.add(room.entryFee); renderSpend(); duelSay(""); }
+  }
+  // The invitation comes to the player: one full screen sheet with the entry and a big Accept, wherever they are on the page.
+  let sheet: HTMLElement | null = null;
+  function closeSheet() { sheet?.remove(); sheet = null; }
+  function openInviteSheet(roomId: string, feeLamports: bigint) {
+    closeSheet();
+    const wrap = document.createElement("div");
+    wrap.className = "invite-sheet";
+    wrap.setAttribute("role", "dialog");
+    wrap.setAttribute("aria-modal", "true");
+    const card = document.createElement("div");
+    card.className = "invite-card";
+    const h = document.createElement("h3");
+    h.textContent = t.live.arenaState.inviteTitle;
+    const p = document.createElement("p");
+    p.textContent = t.live.arenaState.incomingRoom.replace("{fee}", solText(feeLamports, d.locale)).replace("{unit}", d.unitSol);
+    const note = document.createElement("p");
+    note.className = "muted small";
+    const row = document.createElement("div");
+    row.className = "btn-row";
+    // Opened from a chat in an ordinary phone browser: the wallet is not there. Say so and open the page inside the wallet.
+    if (needsWalletBrowser()) {
+      const here = location.href;
+      const a = document.createElement("a");
+      a.className = "btn btn-gold btn-lg";
+      a.href = phantomLink(here, location.origin);
+      a.textContent = "Open in Phantom";
+      const b = document.createElement("a");
+      b.className = "btn btn-glass btn-lg";
+      b.href = solflareLink(here, location.origin);
+      b.textContent = "Open in Solflare";
+      card.append(a, b);
+    }
+    // One tick instead of the whole gate: it sets the two boxes of the acceptance form.
+    const gateA = document.getElementById("play-gate-check") as HTMLInputElement | null;
+    const gateB = document.getElementById("play-gate-net") as HTMLInputElement | null;
+    const gateText = document.querySelector("#play-gate .gate-check span")?.textContent ?? "";
+    let sure: HTMLInputElement | null = null;
+    if (gateA && !gateA.checked) {
+      const lab = document.createElement("label");
+      lab.className = "invite-sure";
+      sure = document.createElement("input");
+      sure.type = "checkbox";
+      const sp = document.createElement("span");
+      sp.textContent = gateText;
+      lab.append(sure, sp);
+      card.append(lab);
+    }
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.className = "btn btn-gold btn-lg";
+    ok.textContent = dt.accept;
+    const no = document.createElement("button");
+    no.type = "button";
+    no.className = "btn btn-glass btn-lg";
+    no.textContent = t.live.arenaState.notNow;
+    ok.addEventListener("click", () => {
+      if (sure && !sure.checked) { note.textContent = gateText; sure.focus(); return; }
+      if (sure?.checked) {
+        for (const g of [gateA, gateB]) if (g && !g.checked) { g.checked = true; g.dispatchEvent(new Event("change", { bubbles: true })); }
+      }
+      if (wallet.current.status !== "connected") {
+        // Connect first, then come back to the same sheet: no hunting for buttons.
+        note.textContent = t.live.arenaState.connectFirst;
+        closeSheet();
+        document.querySelector<HTMLElement>("[data-connect]")?.click();
+        let tries = 0;
+        const timer = setInterval(() => {
+          tries++;
+          if (wallet.current.status === "connected") { clearInterval(timer); openInviteSheet(roomId, feeLamports); }
+          else if (tries > 90) clearInterval(timer);
+        }, 700);
+        return;
+      }
+      closeSheet();
+      void acceptDuel(roomId);
+    });
+    no.addEventListener("click", closeSheet);
+    row.append(ok, no);
+    card.append(h, p, note, row);
+    wrap.append(card);
+    (document.fullscreenElement ?? document.body).append(wrap);
+    sheet = wrap;
+    ok.focus({ preventScroll: true });
   }
   const shownInvites = new Set<string>();
   window.addEventListener("goshi-invite", (ev) => {
@@ -889,6 +1036,7 @@ async function boot(d: Data) {
     btn.addEventListener("click", () => { void acceptDuel(m.roomId); });
     row.append(text, btn);
     duelInvites.append(row);
+    openInviteSheet(m.roomId, BigInt(m.entryFee));
   });
 
   // Arrived through a duel link: show the challenge and the button that takes the seat.
@@ -900,10 +1048,26 @@ async function boot(d: Data) {
     void refreshRooms().then(() => {
       const room = rooms.find((x) => x.roomId.toString() === incomingDuel);
       if (room && room.state === "waiting") {
+        openInviteSheet(incomingDuel, room.entryFee);
         setText(duelIncoming, dt.incoming.replace("{fee}", solText(room.entryFee, d.locale)).replace("{unit}", d.unitSol) + " " + dt.waiting.replace("{n}", String(room.paid.length)).replace("{max}", String(room.guests.length + 1)));
       }
     });
     duelAccept.addEventListener("click", () => { void acceptDuel(incomingDuel); });
+  }
+
+  // Arrived through a room link (?room=<id>): show the invitation and the button that takes a seat.
+  const incomingRoom = new URLSearchParams(location.search).get("room");
+  if (incomingRoom && /^\d{10,24}$/.test(incomingRoom) && !incomingDuel) {
+    void refreshRooms().then(() => {
+      const room = rooms.find((x) => x.roomId.toString() === incomingRoom);
+      if (!room || room.state !== "waiting") { duelIncoming.hidden = false; setText(duelIncoming, dt.gone); return; }
+      duelIncoming.hidden = false;
+      duelAccept.hidden = false;
+      openInviteSheet(incomingRoom, room.entryFee);
+      setText(duelIncoming, t.live.arenaState.incomingRoom.replace("{fee}", solText(room.entryFee, d.locale)).replace("{unit}", d.unitSol));
+      duelAccept.addEventListener("click", () => { void acceptDuel(incomingRoom); });
+      duelIncoming.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   }
 
   // Duels being played now: anyone can watch them.

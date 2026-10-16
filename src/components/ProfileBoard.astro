@@ -11,6 +11,8 @@ const l = copy[lang].play.live;
 ---
 <section class="section" id="profile">
   <div class="wrap profile-stack">
+    <div id="history"><VerifyBoard lang={lang} auto /></div>
+
   <section class="skins glass" data-missions aria-labelledby="missions-h">
       <h3 id="missions-h">{l.missions.h2}</h3>
       <p class="muted small">{l.missions.intro}</p>
@@ -27,8 +29,6 @@ const l = copy[lang].play.live;
       <p class="muted small" data-skin-note aria-live="polite"></p>
       <script type="application/json" data-skins-i18n set:html={JSON.stringify({ ...l.skins, api: site.play.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:") })}></script>
     </section>
-
-    <div id="history"><VerifyBoard lang={lang} auto /></div>
 
   </div>
 </section>

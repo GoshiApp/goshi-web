@@ -31,6 +31,8 @@ export interface OrbStrings {
   nextZone: string;
   /** "You are outside the safe zone: losing {n} mass per second" */
   zoneOutBanner: string;
+  showerIn: string;
+  showerLanded: string;
   endAnnounce: string;
   countdown: string;
   deadTitle: string;
@@ -119,6 +121,10 @@ export function steerFromKeys(keys: ReadonlySet<string>): { dx: number; dy: numb
   return { dx: dx / n, dy: dy / n };
 }
 
+/** A match longer than this is the survival mode; its camera may open up to nearly the whole map. */
+const SURVIVAL_MS = 3_600_000;
+const SURVIVAL_SPAN = 2700;
+
 export class OrbRushArena implements RealtimeArena {
   readonly id = "orb-rush";
   readonly name = { es: "Orb Rush", en: "Orb Rush" } as const;
@@ -144,6 +150,8 @@ export class OrbRushArena implements RealtimeArena {
   private inputTimer: ReturnType<typeof setInterval> | null = null;
   private hudTimer: ReturnType<typeof setInterval> | null = null;
   private timeLeftMs = 0;
+  private dropIn = 0;
+  private dropAt = 0;
   private alive = 0;
   private myMass = 0;
   private dead = false;
@@ -226,6 +234,8 @@ export class OrbRushArena implements RealtimeArena {
   /** Called when the server says the match starts. */
   start(): void {
     this.status = "running";
+    this.deps.sound?.play("start");
+    this.deps.sound?.startMusic();
     this.schedule();
     this.inputTimer = setInterval(() => this.pushInput(), 50);
     this.hudTimer = setInterval(() => this.updateHud(), 250);
@@ -243,8 +253,29 @@ export class OrbRushArena implements RealtimeArena {
   }
 
   /** What a result card needs: the last mass, the best mass, the eliminations and the player's name. */
+  /** True once the person's own body was eliminated. */
+  get isDead(): boolean { return this.dead; }
+
   get stats(): { mass: number; peak: number; kills: number; you: string } {
     return { mass: this.myMass, peak: this.peakMass, kills: this.kills, you: this.you };
+  }
+
+  /** The skins the others wear (the live arena announces them as people come and go). */
+  setPlayerSkins(map: Record<string, string>): void {
+    this.painter.setSkins(map, this.deps.ownSkin?.() ?? null);
+  }
+
+  /** The live arena: a viewer takes a place, so the body they steer is now this one. */
+  setYou(w: string): void {
+    this.you = w;
+    this.dead = false;
+    this.specMap = false;
+    this.specFree = false;
+    this.specTarget = null;
+    this.kills = 0;
+    this.peakMass = 0;
+    this.setDeadOverlay(null);
+    this.painter.resetYouMarker();
   }
 
   /** Changes the color of the local goshi at once. */
@@ -262,6 +293,7 @@ export class OrbRushArena implements RealtimeArena {
   }
 
   dispose(): void {
+    this.deps.sound?.stopMusic();
     this.longTaskObserver?.disconnect();
     this.longTaskObserver = null;
     this.stopLoops();
@@ -291,7 +323,8 @@ export class OrbRushArena implements RealtimeArena {
     this.shakeAmp = 0;
     this.buf.clear();
     this.dead = false;
-    this.specMap = true;
+    // A viewer of the live arena (no body of their own yet) follows the heaviest body instead of seeing the whole map.
+    this.specMap = !msg.you.startsWith("spec_");
     this.local = null;
     this.want = null;
     // Real placeholders until the first snapshot: the whole match to go, the start mass, everybody alive.
@@ -328,11 +361,18 @@ export class OrbRushArena implements RealtimeArena {
     if (key !== null && key !== this.lastPhaseKey) {
       this.lastPhaseKey = key;
       const st = zoneStatus(msg.zone);
-      if (st.line === "warn" || st.line === "shrink" || st.line === "final") this.deps.announce(zoneText(st, this.deps.strings.zoneLines));
+      if (st.line === "warn" || st.line === "shrink" || st.line === "final") { this.deps.announce(zoneText(st, this.deps.strings.zoneLines)); if (st.line === "warn") this.deps.sound?.play("zone"); }
     }
     this.snapshotEffects(msg, before, prev?.tick);
     this.timeLeftMs = msg.timeLeftMs;
+    if (msg.dropIn !== undefined) { this.dropIn = msg.dropIn; this.dropAt = performance.now(); }
+    if (msg.drop) {
+      this.deps.announce(this.deps.strings.showerLanded);
+      this.feedLine(this.deps.strings.showerLanded, false);
+      this.deps.sound?.play("bonus");
+    }
     this.alive = msg.players.filter((p) => p.alive).length;
+    this.deps.sound?.setIntensity(this.alive <= 3 ? 2 : this.alive <= 6 ? 1 : 0);
     const me = msg.players.find((p) => p.w === this.you);
     if (me) {
       this.myMass = me.m;
@@ -368,7 +408,7 @@ export class OrbRushArena implements RealtimeArena {
       const line = deathLine(cause, ev.w, this.you, nameOf, this.deps.strings.death);
       this.deps.announce(line);
       this.feedLine(line, ev.w === this.you);
-      if (ev.by === this.you && ev.w !== this.you) this.kills++;
+      if (ev.by === this.you && ev.w !== this.you) { this.kills++; this.deps.sound?.play("kill"); }
       if (ev.w === this.you) {
         this.dead = true;
         this.specMap = true;
@@ -525,7 +565,7 @@ export class OrbRushArena implements RealtimeArena {
         const tier = orbTier(o.v, o.loot === true);
         fx.pop(o.x, o.y, orbRadius(o.v) * TIER_SCALE[tier] * 1.6, tier);
       }
-      if (me && me.alive && Math.hypot(me.head[0] - o.x, me.head[1] - o.y) < me.r + 36) this.deps.sound?.play("eat");
+      if (me && me.alive && Math.hypot(me.head[0] - o.x, me.head[1] - o.y) < me.r + 36) this.deps.sound?.play(o.v >= 4 ? "bonus" : "eat");
       // Whoever has the orb at its mouth is the one that ate it: a happy face for a moment.
       for (const p of msg.players) {
         if (p.alive && Math.hypot(p.head[0] - o.x, p.head[1] - o.y) < p.r + 40) { this.painter.noteAte(p.w, performance.now()); break; }
@@ -571,6 +611,8 @@ export class OrbRushArena implements RealtimeArena {
   handleEnd(msg: End): void {
     if (msg.roomId !== this.roomId) return;
     this.stopLoops();
+    this.deps.sound?.stopMusic();
+    if (msg.payout.podium[0]?.w === this.you) this.deps.sound?.play("win");
     this.status = "finished";
     this.draw(performance.now());
     this.deps.announce(this.deps.strings.endAnnounce);
@@ -672,6 +714,8 @@ export class OrbRushArena implements RealtimeArena {
     on<PointerEvent>(canvas, "pointerup", release);
     on<PointerEvent>(canvas, "pointercancel", release);
     on<PointerEvent>(canvas, "pointerleave", (e) => { if (e.pointerType === "mouse") this.pointer = null; });
+    // A right click must never open the browser menu over a running match: the menu takes the pointer and the body goes straight on.
+    on<Event>(window, "contextmenu", (e) => { if (this.status === "running") e.preventDefault(); });
 
     const keyName = (e: KeyboardEvent) => e.key.toLowerCase();
     const steering = new Set(["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"]);
@@ -824,7 +868,9 @@ export class OrbRushArena implements RealtimeArena {
     const c = this.canvas;
     if (!c) return;
     // The canvas has at most as many device pixels as the quality level allows (1.5 per CSS pixel on high, 1 on low).
-    const dpr = Math.min(this.painter.quality.dprCap, window.devicePixelRatio || 1);
+    // Also at most about 3.2 million device pixels: a big screen at 2x would repaint 8 million every frame.
+    const area = Math.max(1, c.clientWidth * c.clientHeight);
+    const dpr = Math.max(1, Math.min(this.painter.quality.dprCap, window.devicePixelRatio || 1, Math.sqrt(3_200_000 / area)));
     const w = Math.max(1, Math.round(c.clientWidth * dpr));
     const h = Math.max(1, Math.round(c.clientHeight * dpr));
     if (c.width !== w || c.height !== h) {
@@ -918,7 +964,7 @@ export class OrbRushArena implements RealtimeArena {
       this.cam.y = this.world.h / 2;
       this.camSet = true;
     }
-    const wantSpan = fullMap ? Math.max(this.world.w, this.world.h) * 1.04 : viewSpan(target?.m ?? 20);
+    const wantSpan = fullMap ? Math.max(this.world.w, this.world.h) * 1.04 : viewSpan(target?.m ?? 20, this.matchMs > SURVIVAL_MS ? SURVIVAL_SPAN : undefined);
     if (!this.span || this.reduced) this.span = wantSpan;
     else this.span += (wantSpan - this.span) * smoothingFactor(dt, 0.6);
     const scale = Math.min(W, H) / this.span;
@@ -1010,7 +1056,8 @@ export class OrbRushArena implements RealtimeArena {
       this.rec.ping(performance.now(), last);
     }
     const q = (s: string) => this.host?.querySelector<HTMLElement>(s);
-    const secs = Math.max(0, Math.ceil(this.timeLeftMs / 1000));
+    // Survival has no end: the clock counts what you have lived instead of what is left.
+    const secs = this.matchMs > SURVIVAL_MS ? Math.max(0, Math.floor((this.matchMs - this.timeLeftMs) / 1000)) : Math.max(0, Math.ceil(this.timeLeftMs / 1000));
     const t = q("[data-hud-time]");
     if (t) t.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
     const m = q("[data-hud-mass]");
@@ -1030,7 +1077,10 @@ export class OrbRushArena implements RealtimeArena {
     const z = q("[data-hud-zone]");
     if (z) {
       const latest = this.buf.latest;
-      if (latest) {
+      if (latest && this.matchMs > SURVIVAL_MS) {
+        // Survival: the zone never closes, so the line says when the next airdrop of rich coins lands instead.
+        z.textContent = this.deps.strings.showerIn.replace("{n}", String(Math.max(0, this.dropIn - Math.floor((performance.now() - this.dropAt) / 1000))));
+      } else if (latest) {
         z.textContent = zoneText(zoneStatus(latest.zone, performance.now() - latest.at), this.deps.strings.zoneLines);
       } else {
         // Before the first snapshot: the match has not begun, the first circle comes after the calm part.

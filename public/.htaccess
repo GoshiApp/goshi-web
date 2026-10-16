@@ -83,11 +83,11 @@ Header always set Permissions-Policy "accelerometer=(), camera=(), geolocation=(
 Header always set Strict-Transport-Security "max-age=31536000"
 # CSP: the site loads nothing from other origins. Scripts are only our own files (no inline scripts).
 # Styles allow inline attributes because a few components set a style="" value.
-Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.devnet.solana.com https://goshi-play-server-suxisoytmq-uc.a.run.app wss://goshi-play-server-suxisoytmq-uc.a.run.app; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.devnet.solana.com https://goshi-play-server-suxisoytmq-ew.a.run.app wss://goshi-play-server-suxisoytmq-ew.a.run.app https://api.mainnet-beta.solana.com https://goshi-play-server-mainnet-suxisoytmq-uc.a.run.app wss://goshi-play-server-mainnet-suxisoytmq-uc.a.run.app; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
 # The on-chain games page (src/site.ts, site.play) talks to one Solana RPC endpoint over HTTPS. Only that page may.
 # TODO(owner): if you change site.play.rpcUrl, change the origin here and in firebase.json (the build checks it when the games are enabled).
 <If "%{REQUEST_URI} =~ m#^/(es/jugar|en/play)/#">
-Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.devnet.solana.com https://goshi-play-server-suxisoytmq-uc.a.run.app wss://goshi-play-server-suxisoytmq-uc.a.run.app; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.devnet.solana.com https://goshi-play-server-suxisoytmq-ew.a.run.app wss://goshi-play-server-suxisoytmq-ew.a.run.app https://api.mainnet-beta.solana.com https://goshi-play-server-mainnet-suxisoytmq-uc.a.run.app wss://goshi-play-server-mainnet-suxisoytmq-uc.a.run.app; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
 </If>
 </IfModule>
 

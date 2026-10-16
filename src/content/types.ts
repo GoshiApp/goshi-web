@@ -44,7 +44,7 @@ export interface UI {
     connect: string; connectAria: string; connected: string; disconnect: string; disconnectAria: string; menu: string; profile: string; history: string;
     announceConnected: string; announceDisconnected: string; network: Record<"devnet" | "testnet" | "mainnet-beta", string>;
   };
-  nav: Record<"games" | "ideas" | "verify" | "matches" | "replay" | "invite" | "profile" | "how" | "token" | "security" | "opensource" | "more" | "play" | "roadmap" | "faq" | "risks" | "contribute" | "support", string>;
+  nav: Record<"practiceSite" | "labSite" | "games" | "ideas" | "verify" | "matches" | "replay" | "invite" | "profile" | "how" | "token" | "security" | "opensource" | "more" | "play" | "roadmap" | "faq" | "risks" | "contribute" | "support", string>;
   menuOpen: string;
   themeToggle: string;
   statuses: Record<StatusKey, string>;
@@ -143,7 +143,7 @@ export interface PlayCopy {
     details: string; detailsAria: string;
     joinPaid: string; joinPaidAria: string; joinFree: string; joinFreeAria: string;
     freeNeed: string; freeUnknown: string;
-    youArePaid: string; youAreSaboteur: string; full: string; inProgress: string; tier: string; passSeat: string;
+    youArePaid: string; youAreSaboteur: string; full: string; inProgress: string; prizeRoyale: string; prizeVs: string; prizeDuel: string; seatsPeople: string; seatsBots: string; botsNote: string; tier: string; passSeat: string;
   };
   pot: {
     h2: string; intro: string; noRoom: string; room: string; live: string; whenFull: string;
@@ -194,7 +194,7 @@ export interface PlayCopy {
   };
   /** The free practice card at the top of the page: no wallet, no money. */
   practice: {
-    eyebrow: string; h2: string; text: string; nameLabel: string; namePlaceholder: string; button: string; note: string;
+    eyebrow: string; h2: string; text: string; nameLabel: string; namePlaceholder: string; serverLabel: string; serverAuto: string; regionNames: Record<string, string>; modeLabel: string; modeMatch: string; modeSurvival: string; showStart: string; showBadge: string; showLines: string[]; liveJoin: string; liveLeave: string; liveReconnecting: string; liveButton: string; liveWatchOnly: string; liveCounts: string; livePlaying: string; liveQueued: string; liveDead: string; diffLabel: string; diffEasy: string; diffMedium: string; diffHard: string; diffInsane: string; button: string; note: string;
     connecting: string; unreachable: string; busy: string; lost: string; failed: string;
     leave: string; resultH2: string; ranking: string; close: string;
     saboteur: string; bot: string;
@@ -243,12 +243,12 @@ export interface PlayCopy {
     arenaState: {
       connecting: string; waitingPlayers: string; startsIn: string; starting: string;
       lobbyH: string; paidSeats: string; freeSeats: string; empty: string; waited: string; vsTimer: string; vsDue: string;
-      fill: string; practice: string; practiceAgain: string; hint: string;
+      fill: string; practice: string; practiceAgain: string; hint: string; share: string; shareCopied: string; returnToMatch: string; peerLeft: string; peerLeftGrace: string; matchLocked: string; peerBack: string; matchOver: string; matchOverRank: string; notNow: string; showAll: string; boostWord: string; boostLeft: string; boostRight: string; boostBigger: string; boostSmaller: string; leadTop: string; leadYou: string; leadBehind: string; inviteTitle: string; connectFirst: string; shareText: string; incomingRoom: string;
     };
     game: {
       canvasLabel: string; rotateTitle: string; rotateText: string; rotateStay: string; fullscreen: string; exitFullscreen: string; controls: string; boost: string; ctrlJoystick: string; ctrlFollow: string; time: string; mass: string; scores: string; you: string;
-      alive: string; nitro: string; soundOn: string; soundOff: string;
-      finalZone: string; nextZone: string; zoneCalm: string; zoneWarn: string; zoneShrink: string; zoneHold: string; zoneOutBanner: string; diagButton: string; diagLine: string; reportButton: string; reportCopied: string; reportManual: string;
+      alive: string; nitro: string; soundOn: string; soundOff: string; musicOn: string; musicOff: string; memeOn: string; memeOff: string;
+      finalZone: string; nextZone: string; zoneCalm: string; zoneWarn: string; zoneShrink: string; zoneHold: string; zoneOutBanner: string; showerIn: string; showerLanded: string; diagButton: string; diagLine: string; reportButton: string; reportCopied: string; reportManual: string;
       quality: string; qualityAuto: string; qualityHigh: string; qualityMedium: string; qualityLow: string; ping: string; pingValue: string; pingWait: string; rank: string; rankValue: string; playersValue: string; outValue: string; zone: string; protectedHint: string; backToZone: string; saboteurLegend: string; paidLegend: string; botLegend: string;
       startAnnounce: string; endAnnounce: string; countdown: string;
       deadTitle: string; deadText: string; spectating: string; rankLabel: string;
@@ -305,6 +305,7 @@ export interface VerifyCopy {
   steps: Record<"commit" | "seed" | "block" | "replay" | "mass" | "arena" | "jackpot" | "chain", string>;
   ok: string; bad: string; unknown: string; sol: string;
   watch: string; mine: string; mineNeedWallet: string; howTitle: string; how: string[]; winTitle: string; win: string[];
+  pay: Record<string, string>;
 }
 
 export interface ReplayCopy {
@@ -318,6 +319,8 @@ export interface ReplayCopy {
 export interface MatchesCopy {
   filterAll: string; filterLabel: string; modes: Record<"royale" | "vs" | "duel", string>;
   players: string; winner: string; loadMore: string; loading: string; empty: string; error: string; refresh: string; shown: string; searchLink: string;
+  tvStart: string; tvNext: string; tvExit: string; tvCount: string; tvEmpty: string;
+  tvMusicOn: string; tvMusicOff: string; liveBadge: string; liveStart: string; liveLines: string[];
 }
 
 export interface InviteCopy {

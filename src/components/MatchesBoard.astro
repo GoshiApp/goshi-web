@@ -10,10 +10,16 @@ const api = site.play.serverUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http
 const data = JSON.stringify({
   api, rpc: site.play.rpcUrl ?? "https://api.devnet.solana.com", cluster: site.play.cluster,
   t: copy[lang].verify, r: copy[lang].replay, m, verifyHref: path(lang, "verify"),
+  domain: site.domain, ca: site.play.cluster === "mainnet-beta" ? site.play.goshiMint : "",
 });
 ---
 <section class="section" id="matches">
   <div class="wrap">
+    <form class="matches-search" id="matches-search" novalidate>
+      <input id="matches-q" type="text" autocomplete="off" spellcheck="false" aria-label={copy[lang].verify.label} placeholder={copy[lang].verify.placeholder} />
+      <button class="btn btn-gold btn-sm" type="submit">{copy[lang].verify.button}</button>
+      <button class="btn btn-glass btn-sm" type="button" id="matches-clear" hidden>{m.filterAll}</button>
+    </form>
     <div class="matches-bar">
       <div class="chips" role="group" aria-label={m.filterLabel} id="matches-filter">
         <button type="button" class="chip on" data-mode="">{m.filterAll}</button>
@@ -21,12 +27,12 @@ const data = JSON.stringify({
         <button type="button" class="chip" data-mode="vs">{m.modes.vs}</button>
         <button type="button" class="chip" data-mode="duel">{m.modes.duel}</button>
       </div>
+      <button type="button" class="btn btn-gold btn-sm" id="matches-tv">{m.tvStart}</button>
       <button type="button" class="btn btn-glass btn-sm" id="matches-refresh">{m.refresh}</button>
     </div>
     <p class="muted" id="matches-msg" role="status" aria-live="polite">{m.loading}</p>
     <ul class="idea-list" id="matches-list"></ul>
     <div class="btn-row"><button type="button" class="btn btn-glass" id="matches-more" hidden>{m.loadMore}</button></div>
-    <p class="muted small"><a class="link-btn" href={path(lang, "verify")}>{m.searchLink}</a></p>
     <script type="application/json" id="matches-data" set:html={data}></script>
   </div>
 </section>
