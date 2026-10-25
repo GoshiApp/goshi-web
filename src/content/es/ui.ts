@@ -118,7 +118,7 @@ export const calc: CalcCopy = {
     saboteursHelp: "De 0 a 3. No compiten: se reparten el 2% del pozo por igual, pagado en SOL.",
     invalid: "Escribe una entrada mayor que cero, de 3 a 10 jugadores de pago y de 0 a 3 saboteadores.",
     pass: "Un puesto es con pase",
-    passHelp: "Un puesto con pase no paga nada: la casa renuncia a su parte en esa sala y la sala nunca debe más de lo que tiene.",
+    passHelp: "[[t:Un puesto con pase no paga nada: los premios de esa sala se calculan sobre lo que tiene de verdad y la sala nunca debe más de lo que tiene.]][[m:Un puesto con pase no paga nada: la casa renuncia a su parte en esa sala y la sala nunca debe más de lo que tiene.]]",
   },
   vs: { h3: "Una partida VS", fee: "Entrada (SOL)", players: "Jugadores de pago", playersHelp: "De 2 a 9. No hay saboteadores en el modo VS.", invalid: "Escribe una entrada mayor que cero y de 2 a 9 jugadores." },
   head: ["Quién lo recibe", "Se paga en", "Monto"],
@@ -140,7 +140,7 @@ export const calc: CalcCopy = {
     loser: "Cada uno de los demás",
   },
   kinds: { sol: "SOL", goshi: "$GOSHI (valor en SOL)", none: "nada" },
-  note: "El pozo es la suma de las entradas de los jugadores de pago. El 88% es el premio para los tres mejores jugadores de pago: 60%, 25% y 15%. El 2% lo reparten por igual los saboteadores, que no compiten. La casa se queda con lo que queda, el 10% del pozo, que se divide 10% recompra y quema, 15% infraestructura, 25% liquidez y comunidad y 50% Super Pozo. Con un puesto con pase la casa renuncia a su parte en esa sala.",
+  note: "[[t:El pozo es la suma de las entradas de los jugadores de pago. El 97% se convierte en monedas en el mapa: cada jugador de pago cobra las monedas de su bolsa, y las que nadie tiene al final se reparten por igual entre los tres mejores jugadores de pago. Los saboteadores no cobran. La casa se queda con el 3% del pozo, que se divide 10% recompra y quema, 15% infraestructura, 25% liquidez y comunidad y 50% Super Pozo. Con un puesto con pase los premios se calculan sobre lo que la sala tiene de verdad.]][[m:El pozo es la suma de las entradas de los jugadores de pago. El 88% es el premio para los tres mejores jugadores de pago: 60%, 25% y 15%. El 2% lo reparten por igual los saboteadores, que no compiten. La casa se queda con lo que queda, el 10% del pozo, que se divide 10% recompra y quema, 15% infraestructura, 25% liquidez y comunidad y 50% Super Pozo. Con un puesto con pase la casa renuncia a su parte en esa sala.]]",
   unit: "SOL",
 };
 

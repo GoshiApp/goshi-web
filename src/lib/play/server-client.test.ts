@@ -275,3 +275,31 @@ test("practice: start and end carry the practice flag and an empty podium", asyn
   });
   assert.deepEqual(got.map((m) => [m.t, m.practice]), [["start", true], ["end", true]]);
 });
+
+test("guest rooms: create, join, start and leave go out as groom messages, lobby events arrive", async () => {
+  const { client, sockets } = setupAnonymous();
+  const lobbies: unknown[] = [];
+  client.on("groomCreated", (m) => lobbies.push(m));
+  client.on("groomUpdate", (m) => lobbies.push(m));
+  client.connect();
+  sockets[0].recv(HELLO);
+  await flush();
+
+  assert.equal(client.groomCreate("Ana"), true);
+  assert.equal(client.groomJoin("Ana", "K7Q2"), true);
+  assert.equal(client.groomStart(), true);
+  assert.equal(client.groomLeave(), true);
+  assert.deepEqual(sockets[0].sent, [
+    { t: "groom_create", name: "Ana" },
+    { t: "groom_join", name: "Ana", code: "K7Q2" },
+    { t: "groom_start" },
+    { t: "groom_leave" },
+  ]);
+
+  sockets[0].recv({ t: "groom_created", code: "K7Q2", players: [{ n: "Ana", host: true }], max: 5 });
+  sockets[0].recv({ t: "groom_update", players: [{ n: "Ana", host: true }, { n: "Beto", host: false }] });
+  assert.deepEqual(lobbies, [
+    { t: "groom_created", code: "K7Q2", players: [{ n: "Ana", host: true }], max: 5 },
+    { t: "groom_update", players: [{ n: "Ana", host: true }, { n: "Beto", host: false }] },
+  ]);
+});

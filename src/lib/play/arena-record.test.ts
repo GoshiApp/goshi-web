@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { Arena, arenaBrain } from "./arena-sim.ts";
 import { Replay, decodeRecord, snapPlayers, zoneOf } from "./arena-record.ts";
 
-// Encodes like server/src/game/arena-replay.ts (GA\x01 for rules 1, GA\x02 for rules 2).
-function encode(seed: number, matchMs: number, shrink: number, players: { w: string; role: string; bot: boolean; m: number }[], log: number[][], rules = 2): Uint8Array {
+// Encodes like server/src/game/arena-replay.ts (GA\x01, GA\x02 or GA\x03: the version of the rules).
+function encode(seed: number, matchMs: number, shrink: number, players: { w: string; role: string; bot: boolean; m: number }[], log: number[][], rules = 3): Uint8Array {
   const enc = new TextEncoder();
   const names = players.map((p) => enc.encode(p.w));
   const size = 3 + 12 + 1 + players.reduce((a, _p, i) => a + 1 + names[i].length + 4, 0) + 4 + log.length * 5;

@@ -13,7 +13,9 @@ export type DeathCause =
   | { kind: "body"; by: string }
   | { kind: "head"; by: string }
   | { kind: "zone" }
-  | { kind: "wall" };
+  | { kind: "wall" }
+  | { kind: "kamikaze" }
+  | { kind: "cashout" };
 
 export interface Body {
   m: number;
@@ -27,6 +29,8 @@ export const HEAD_TOUCH_SLACK = 4;
 export function classifyDeath(ev: DeathEvent, victim: Body | undefined, killer: Body | undefined): DeathCause {
   if (ev.by === "zone") return { kind: "zone" };
   if (ev.by === "wall") return { kind: "wall" };
+  if (ev.by === "kamikaze") return { kind: "kamikaze" };
+  if (ev.by === "cashout") return { kind: "cashout" };
   if (victim && killer) {
     const d = Math.hypot(victim.head[0] - killer.head[0], victim.head[1] - killer.head[1]);
     if (d <= victim.r + killer.r + HEAD_TOUCH_SLACK && killer.m >= victim.m) return { kind: "head", by: ev.by };
@@ -53,6 +57,11 @@ export interface DeathStrings {
   feedZone: string;
   /** "{name} hit the world edge" */
   feedWall: string;
+  /** Rules 6: a kamikaze on the boss, and a body that cashed out (you, and somebody else). */
+  youKamikaze?: string;
+  youCashout?: string;
+  feedKamikaze?: string;
+  feedCashout?: string;
 }
 
 const fill = (text: string, vars: Record<string, string>) => text.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? "");
@@ -66,6 +75,8 @@ export function deathLine(cause: DeathCause, victim: string, you: string, nameOf
       case "head": return fill(s.youHead, { name: nameOf(cause.by) });
       case "zone": return s.youZone;
       case "wall": return s.youWall;
+      case "kamikaze": return s.youKamikaze ?? "";
+      case "cashout": return s.youCashout ?? "";
     }
   }
   switch (cause.kind) {
@@ -73,5 +84,7 @@ export function deathLine(cause: DeathCause, victim: string, you: string, nameOf
     case "head": return fill(s.feedHead, { name, by: nameOf(cause.by) });
     case "zone": return fill(s.feedZone, { name });
     case "wall": return fill(s.feedWall, { name });
+    case "kamikaze": return fill(s.feedKamikaze ?? "", { name });
+    case "cashout": return fill(s.feedCashout ?? "", { name });
   }
 }

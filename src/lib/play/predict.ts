@@ -21,7 +21,8 @@ export const MAX_EXTRAPOLATE_S = 0.4;
 /** Time constant of the error correction (seconds). */
 export const CORRECTION_TAU_S = 0.1;
 
-export const speedOf = (mass: number): number => 135 / (1 + Math.max(0, mass) / 600);
+/** Same formula as the server (rules 3): a big body is slower, but never a slug. */
+export const speedOf = (mass: number): number => 135 / (1 + 0.18 * Math.log(1 + Math.max(0, mass) / 100));
 /** Turn rate for a mass (radians per second). Same formula as the server. */
 export const turnRateOf = (mass: number): number => TURN_RATE / (1 + 0.35 * Math.log(1 + Math.max(0, mass - START_MASS) / 60));
 export const bodyRadius = (mass: number): number => 10 + 1.1 * Math.sqrt(Math.max(0, mass));

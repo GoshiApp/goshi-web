@@ -1,7 +1,7 @@
 // The match viewer: the minute of frenzy of EVERYONE on the same map, then the arena, played again in the browser from the
 // public records (nothing is uploaded, nothing is trusted: the same files the hash on chain fixes). Built for phones and
 // large screens: one column on a phone, the map and a side panel on a wide screen.
-import { ArenaPainter, colorFor, orbRadius, type LooseOrb } from "../lib/play/arena-paint.ts";
+import { ArenaPainter, colorFor, uiScale, orbRadius, type LooseOrb } from "../lib/play/arena-paint.ts";
 import { TIER_SCALE, orbTier } from "../lib/play/arena-fx.ts";
 import { SETTINGS } from "../lib/play/arena-quality.ts";
 import { Replay, TICK_S, decodeRecord, orbMap, snapPlayers, zoneOf } from "../lib/play/arena-record.ts";
@@ -16,6 +16,8 @@ import type { PlayerSnap } from "../lib/play/protocol.ts";
 export interface Item {
   roomId: string; at: number; mode: string; cluster: string; tx: string | null; entryFee: string; wallets: string[];
   ranking: { w: string; rank: number; score: number; role: string }[];
+  /** The skin (or goshi color) each wallet wore, so the replay shows every body as it was. */
+  skins?: Record<string, string>;
   proof: { seedReveal: string; blockhash: string; snapshot: { mass: Record<string, number> }; replays: { w: string; hash: string }[] } | null;
 }
 export type Strings = Record<string, string> & { paint: Record<string, string> };
@@ -198,6 +200,7 @@ export function mountData(host: HTMLElement, d: Data, o: Options): () => void {
   let acc = 0;
   const painter = new ArenaPainter();
   painter.quality = SETTINGS[0];
+  painter.setSkins(d.item?.skins ?? {}, null);
   const cam = { x: 1500, y: 1500 };
   let deathsDone: { t: number; w: string; by: string }[] | null = null;
 
@@ -590,7 +593,7 @@ export function mountData(host: HTMLElement, d: Data, o: Options): () => void {
     if (zoom === "follow" && focus && focus.alive) { cam.x = focus.head[0]; cam.y = focus.head[1]; scale = Math.min(s.w, s.h) / viewSpan(focus.m); }
     else { cam.x = 1500; cam.y = 1500; scale = Math.min(s.w, s.h) / 3000; }
     pt.frame({
-      g: s.g, W: s.w, H: s.h, dpr: s.dpr, now: nowMs, players, zone: zoneOf(rp.arena), orbs, world: { w: 3000, h: 3000 }, you: focus?.w ?? "", cam, scale, shake: [0, 0],
+      g: s.g, W: s.w, H: s.h, dpr: s.dpr, ui: s.dpr * uiScale(s.w / s.dpr, s.h / s.dpr), now: nowMs, players, zone: zoneOf(rp.arena), orbs, world: { w: 3000, h: 3000 }, you: focus?.w ?? "", cam, scale, shake: [0, 0],
       meAlive: !!focus && focus.alive, myMass: focus?.m ?? 0, boosting: false, protectLeft: 0, hasState: true, floaters: [], reduced: false, strings: t.paint as never,
     });
     // On top of the painter: the heads that can be tapped, and the marks (the painter leaves the screen space transform in place).
@@ -668,6 +671,7 @@ export function mountData(host: HTMLElement, d: Data, o: Options): () => void {
     catch { recMsg.hidden = false; recMsg.textContent = t.recUnsupported; return; }
     const rp2 = new ArenaPainter();
     rp2.quality = SETTINGS[0];
+    rp2.setSkins(d.item?.skins ?? {}, null);
     const chunks: BlobPart[] = [];
     const me: Rec = { mr, c, g: rg, painter: rp2, mime, chunks, endAt: 0, tab, discard: false };
     mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };

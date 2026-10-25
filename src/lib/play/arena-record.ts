@@ -1,18 +1,18 @@
-// Reads a match record ("GA\x01" or "GA\x02": the last byte is the version of the rules, the file "Download the full match record") and plays it again in the browser with the
+// Reads a match record ("GA\x01", "GA\x02" or "GA\x03": the last byte is the version of the rules, the file "Download the full match record") and plays it again in the browser with the
 // same rules as the server (arena-sim.ts). Nothing here talks to a server: the file and the rules are all it needs.
 // Format: seed u32 | matchMs u32 | shrinkStartMs u32 | nPlayers u8 | per player: wallet length u8, wallet, role u8, bot u8, mass u16 (x10) |
 // nEntries u32 | per entry: tick u16, player index u8, angle u8, boost u8.
-import { Arena, ARENA, AWAY_PROTECT_S, BACK_PROTECT_S, bodyPoints, bodyRadius, type Role, type RulesVersion } from "./arena-sim.ts";
+import { Arena, ARENA, AWAY_PROTECT_S, BACK_PROTECT_S, bodyPoints, bodyRadius, type Role, type RulesVersion, type TrapKind } from "./arena-sim.ts";
 import type { Orb, PlayerSnap, ZoneNow } from "./protocol.ts";
 
 export interface RecordPlayer { w: string; n: string; role: Role; bot: boolean; m: number }
-export interface MatchRecord { seed: number; matchMs: number; shrinkStartMs: number; players: RecordPlayer[]; log: [number, number, number, number][]; /** The version of the rules it was played with. */ rules: RulesVersion }
+export interface MatchRecord { seed: number; matchMs: number; shrinkStartMs: number; players: RecordPlayer[]; log: [number, number, number, number][]; /** The version of the rules it was played with. */ rules: RulesVersion; /** Rules 5, a room paid by bag: the pot in lamports. */ bagPool?: number; /** And its entry fee, which prices the powers paid from the bag. */ bagFee?: number }
 
 export function decodeRecord(bytes: Uint8Array): MatchRecord {
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2]);
-  if (magic !== "GA\u0001" && magic !== "GA\u0002") throw new Error("not-arena-record");
-  const rules: RulesVersion = magic === "GA\u0001" ? 1 : 2;
+  if (magic !== "GA\u0001" && magic !== "GA\u0002" && magic !== "GA\u0003" && magic !== "GA\u0004" && magic !== "GA\u0005" && magic !== "GA\u0006" && magic !== "GA\u0007" && magic !== "GA\u0008") throw new Error("not-arena-record");
+  const rules = bytes[2] as RulesVersion;
   let o = 3;
   const seed = v.getUint32(o); o += 4;
   const matchMs = v.getUint32(o); o += 4;
@@ -35,7 +35,9 @@ export function decodeRecord(bytes: Uint8Array): MatchRecord {
     log.push([v.getUint16(o), v.getUint8(o + 2), v.getUint8(o + 3), v.getUint8(o + 4)]);
     o += 5;
   }
-  return { seed, matchMs, shrinkStartMs, players, log, rules };
+  const bagPool = o + 8 <= bytes.byteLength ? Number(v.getBigUint64(o)) : 0;
+  const bagFee = o + 16 <= bytes.byteLength ? Number(v.getBigUint64(o + 8)) : 0;
+  return { seed, matchMs, shrinkStartMs, players, log, rules, bagPool, bagFee };
 }
 
 export const TICK_S = 1 / ARENA.tickRate;
@@ -62,6 +64,8 @@ export class Replay {
     const r = this.rec;
     this.arena = new Arena(r.seed, r.players, { matchMs: r.matchMs, shrinkStartMs: r.shrinkStartMs, rules: r.rules });
     r.players.forEach((p, i) => { this.arena.players[i].m = p.m; this.arena.players[i].peak = p.m; });
+    this.arena.bagFee = r.bagFee ?? 0;
+    if (r.bagPool) this.arena.mintBags(r.bagPool);
     this.tick = 0;
     this.k = 0;
     this.deaths = [];
@@ -79,6 +83,8 @@ export class Replay {
       const [, pi, ab, f] = log[this.k++];
       const p = this.arena.players[pi];
       // Flags 2 and 3 are not steering: the connection dropped (the bot plays, protected) or came back (a few seconds of protection).
+      // Flag 4: a trap (the angle byte is its kind), placed at this step like it was in the match.
+      if (f === 4) { this.arena.queueTrap(pi, ab as TrapKind); continue; }
       if (f === 2 || f === 3) { p.auto = f === 2; p.protectUntil = Math.max(p.protectUntil, this.arena.time + (f === 3 ? BACK_PROTECT_S : AWAY_PROTECT_S)); continue; }
       const hd = (ab / 256) * Math.PI * 2;
       p.dx = Math.cos(hd);

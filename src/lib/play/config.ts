@@ -19,6 +19,9 @@ export interface PlayConfig {
   liquidityWallet: string;
   /** The play server (WebSocket). ws:// only for localhost, wss:// everywhere else. Its origin must be in connect-src. */
   serverUrl: string;
+  /** The paid live arenas run on their own server (a dedicated machine): the arena view and its tickets talk to it. Optional; the
+   *  live arena falls back to serverUrl. Its origin must be in connect-src like serverUrl. */
+  liveUrl?: string;
   /** Practice and the live arena can also run on servers in other regions (the person picks, or the lowest ping is used).
    *  The rooms with entries always go to serverUrl. Each origin must be in connect-src. */
   regions?: { id: string; url: string }[];

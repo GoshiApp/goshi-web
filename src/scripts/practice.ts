@@ -2,3 +2,4 @@
 import { getShell } from "./arena-shell.ts";
 
 getShell()?.bindCard();
+getShell()?.bindGuestWizard?.();

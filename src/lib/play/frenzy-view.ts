@@ -4,6 +4,7 @@
 import { drawYouMarker } from "./you-marker.ts";
 import type { FrenzyInfo, FrenzyEnd, FrenzySnap } from "./protocol.ts";
 import { COINS } from "./coins.ts";
+import { ArenaPainter } from "./arena-paint.ts";
 import { selectedSkin, skinById } from "./skins.ts";
 
 export interface FrenzyStrings {
@@ -115,7 +116,7 @@ export class FrenzyView {
     for (const id of m.taken) {
       this.gone.add(id);
       const g = this.gems.find((q) => q.id === id);
-      if (g && !this.deps.reduced) this.floaters.push({ x: g.x, y: g.y, text: `+${g.m}`, age: 0, color: SYM_COLOR[g.s] ?? "#fff" });
+      if (g && !this.deps.reduced) this.floaters.push({ x: g.x, y: g.y, text: `+${g.m}`, age: 0, color: SYM_COLOR[0] ?? "#fff" });
     }
     for (const id of m.back) this.gone.delete(id);
     if (m.hit) this.flash = 1;
@@ -300,7 +301,8 @@ export class FrenzyView {
       // The bubble is drawn about three times wider than the disc so the glow shows: the disc is 0.6 of that.
       const r = (q.btc ? 26 : q.m >= 3 ? 19 : 15) * scale;
       const half = r * 1.7;
-      g.drawImage(bubble(q.s), x - half, y - half, half * 2, half * 2);
+      // Every gem is SOL (no other coin or token on any site): small, medium, and the locked big one.
+      g.drawImage(bubble(0), x - half, y - half, half * 2, half * 2);
     }
     // the goshi: the same head and face as in the arena, in the colors of the chosen skin
     const R = 15 * scale * (1 + Math.min(0.8, (this.cur.m - 20) / 140));
@@ -428,8 +430,16 @@ export class FrenzyView {
   }
 }
 
-/** One glowing crypto bubble with its ticker, like the orbs of the arena: drawn once per symbol, then stamped. */
+/** The SOL coin of the arena, shared (its logo loads a moment after the page). */
+let solPainter: ArenaPainter | null = null;
+function solSprite(): HTMLCanvasElement | null {
+  try { solPainter ??= new ArenaPainter(); return solPainter.solCoin(); } catch { return null; }
+}
+
+/** One glowing SOL bubble, like the SOL coins of the arena: drawn once, then stamped. */
 const bubbleCache = new Map<number, HTMLCanvasElement>();
+// The Solana logo is an image that loads after the page: the bubbles are drawn again once it is in.
+if (typeof window !== "undefined") for (const ms of [1500, 4000]) setTimeout(() => bubbleCache.clear(), ms);
 function bubble(index: number): HTMLCanvasElement {
   let c = bubbleCache.get(index);
   if (c) return c;
@@ -457,16 +467,9 @@ function bubble(index: number): HTMLCanvasElement {
     g.lineWidth = 2.4;
     g.strokeStyle = "rgba(255,255,255,0.92)";
     g.stroke();
-    const t = SYM[index] ?? "";
-    g.fillStyle = "#fff";
-    g.font = `800 ${Math.round(Math.min(R * 0.95, (R * 2 * 0.86) / Math.max(2.2, t.length * 0.62)))}px system-ui, sans-serif`;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.lineJoin = "round";
-    g.strokeStyle = "rgba(0,0,0,0.55)";
-    g.lineWidth = 2.5;
-    g.strokeText(t, h, h + 1);
-    g.fillText(t, h, h + 1);
+    // The real Solana logo on the disc (the coin sprite of the arena), never a ticker of another coin.
+    const sol = solSprite();
+    if (sol) g.drawImage(sol, h - R * 1.05, h - R * 1.05, R * 2.1, R * 2.1);
   }
   bubbleCache.set(index, c);
   return c;

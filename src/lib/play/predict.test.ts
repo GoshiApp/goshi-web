@@ -4,14 +4,16 @@ import {
   BOOST_SPEED, MAX_EXTRAPOLATE_S, RttMeter, TURN_RATE, advance, ahead, angleDiff, bodyRadius, effectiveSpeed, extendBody,
   extendBodyInto, lookAheadSeconds, observedSpeed, pathLength, reconcile, smoothingFactor, speedOf, trimPath, turnToward, type Pt,
 } from "./predict.ts";
-import { LIVE_DELAY_MS, SnapBuffer, extrapolatePlayer, type TimedSnap } from "./interp.ts";
+import { LIVE_DELAY_MS, MAX_LIVE_DELAY_MS, SnapBuffer, TickClock, extrapolatePlayer, type TimedSnap } from "./interp.ts";
 import type { PlayerSnap } from "./protocol.ts";
 
 const near = (a: number, b: number, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} is not within ${eps} of ${b}`);
 
 test("speed and radius follow the server formulas", () => {
   near(speedOf(0), 135);
-  near(speedOf(600), 67.5);
+  near(speedOf(600), 135 / (1 + 0.18 * Math.log(7)));
+  // A giant is slower, but not a slug: at 25 000 it still moves at about half the speed of a newcomer.
+  assert.ok(speedOf(25_000) > 60);
   near(bodyRadius(20), 10 + 1.1 * Math.sqrt(20));
   assert.ok(bodyRadius(20) > 14.9 && bodyRadius(20) < 15.1, "about 15 at the start");
   near(effectiveSpeed(20, true), speedOf(20) * BOOST_SPEED);
@@ -117,15 +119,15 @@ test("a dead player or a zero extrapolation is returned as it is", () => {
   assert.equal(extrapolatePlayer(live.players[0], null, live, 0), live.players[0]);
 });
 
-test("the live view blends only a little and leads by half the round trip", () => {
+test("the live view blends only a little and leads by half the round trip, at most 30 ms", () => {
   const b = new SnapBuffer();
   const v = speedOf(20) * 0.05;
   b.push(S(1000, 10, P("a", 0, 0)));
   b.push(S(1050, 11, P("a", v, 0)));
   b.push(S(1100, 12, P("a", 2 * v, 0)));
-  // Between snapshots 11 and 12 (draw time 1075) with a 100 ms round trip (50 ms lead).
+  // Between snapshots 11 and 12 (draw time 1075) with a 100 ms round trip: the lead is capped at 30 ms.
   const out = b.sampleLive(1075 + LIVE_DELAY_MS, 100)!;
-  near(out.players[0].head[0], 1.5 * v + speedOf(20) * 0.05, 1e-6);
+  near(out.players[0].head[0], 1.5 * v + speedOf(20) * 0.03, 1e-6);
   // With no round trip and no late snapshot it is plain interpolation.
   near(b.sampleLive(1075 + LIVE_DELAY_MS, 0)!.players[0].head[0], 1.5 * v, 1e-6);
 });
@@ -264,8 +266,8 @@ test("the in place sampler gives the same picture as the allocating helpers", ()
   b.push(prev);
   b.push(cur);
   const live = b.sampleLive(50 + 60 + 60, 80)!.players[0];
-  // Late by 60 ms: held on cur and moved ahead by lead (40 ms) plus the 60 ms.
-  const ref = extrapolatePlayer(cur.players[0], prev, cur, 0.04 + 0.06);
+  // Late by 60 ms: held on cur and moved ahead by lead (capped at 30 ms) plus the 60 ms.
+  const ref = extrapolatePlayer(cur.players[0], prev, cur, 0.03 + 0.06);
   assert.ok(Math.hypot(live.head[0] - ref.head[0], live.head[1] - ref.head[1]) < 1e-6);
   assert.equal(live.body.length, ref.body.length);
   for (let i = 0; i < ref.body.length; i++) assert.ok(Math.hypot(live.body[i][0] - ref.body[i][0], live.body[i][1] - ref.body[i][1]) < 1e-6);
@@ -282,4 +284,19 @@ test("extendBodyInto gives the same body as extendBody and reuses the buffer", (
   const tuple = out[0];
   extendBodyInto(out, 100, 0, body, 114, 3);
   assert.equal(out[0], tuple, "the tuples are reused");
+});
+
+test("the tick clock ignores late arrivals, follows early ones and sizes the live delay", () => {
+  const c = new TickClock();
+  assert.equal(c.stamp(1000, 20), 1000);
+  // A packet 40 ms late is still stamped near its tick, not at its arrival.
+  assert.ok(Math.abs(c.stamp(1090, 21) - 1050) < 1);
+  // An early one moves the clock at once.
+  assert.equal(c.stamp(1095, 22), 1095);
+  // Viewers at 10 Hz get a longer delay than players at 20 Hz.
+  const slow = new TickClock();
+  for (let i = 0; i < 60; i++) slow.stamp(i * 100, i * 2);
+  assert.ok(slow.delay() >= 100 && slow.delay() <= MAX_LIVE_DELAY_MS);
+  // A new match (tick back to 0) starts the clock again.
+  assert.equal(c.stamp(9000, 0), 9000);
 });

@@ -29,22 +29,24 @@ test("the percentages written in the copy are the ones in the contract math", ()
   const num = (n: bigint | number) => new RegExp(`(^|[^\\d.,])${String(n).replace(".", "[.,]")}%`);
   const pool = PRIZE_POOL_PCT;
   const ofPot = (pct: bigint, of: bigint) => Number((pool * pct * 10n) / 100n) / 10 * 1; // percent of the pot, one decimal
-  for (const l of [en, es]) {
+  // The money rules differ by network: the mainnet text ([[m:]]) follows the place prizes, the test text ([[t:]]) pays by bag.
+  const mainnet = (x: string) => x.replace(/\[\[t:[\s\S]*?\]\]/g, "").replace(/\[\[m:([\s\S]*?)\]\]/g, "$1");
+  const testnet = (x: string) => x.replace(/\[\[m:[\s\S]*?\]\]/g, "").replace(/\[\[t:([\s\S]*?)\]\]/g, "$1");
+  for (const raw of [en, es]) {
+    assert.match(testnet(raw.pot.totals.prizePool.share), /97%/);
+    const l = JSON.parse(JSON.stringify(raw), (_k, v) => (typeof v === "string" ? mainnet(v) : v)) as typeof raw;
     const r = l.pot.rows;
+    const t = JSON.parse(JSON.stringify(raw), (_k, v) => (typeof v === "string" ? testnet(v) : v)) as typeof raw;
     assert.match(r.first.share, num(PRIZE_FIRST_PCT));
     assert.match(r.second.share, num(PRIZE_SECOND_PCT));
     assert.match(r.third.share, num(100n - PRIZE_FIRST_PCT - PRIZE_SECOND_PCT));
-    assert.match(r.first.share, num(52.8));
-    assert.match(r.second.share, num(22));
-    assert.match(r.third.share, num(13.2));
-    assert.match(r.burn.share, num(RAKE_BURN_PCT));
-    assert.match(r.infra.share, num(RAKE_INFRA_PCT));
-    assert.match(r.liquidity.share, num(RAKE_LIQ_PCT));
-    assert.match(r.jackpot.share, num(100n - RAKE_BURN_PCT - RAKE_INFRA_PCT - RAKE_LIQ_PCT));
+    assert.match(t.pot.rows.burn.share, num(RAKE_BURN_PCT));
+    assert.match(t.pot.rows.infra.share, num(RAKE_INFRA_PCT));
+    assert.match(t.pot.rows.liquidity.share, num(RAKE_LIQ_PCT));
+    assert.match(t.pot.rows.jackpot.share, num(100n - RAKE_BURN_PCT - RAKE_INFRA_PCT - RAKE_LIQ_PCT));
     assert.match(r.saboteurs.share, num(SABOTEUR_POOL_PCT));
-    assert.match(l.pot.totals.rake.share, num(RAKE_PCT));
-    assert.match(l.pot.totals.prizePool.share, num(PRIZE_POOL_PCT));
-    assert.match(l.pot.vsNote, num(VS_LOSER_KEEPS_PCT));
+    assert.match(t.pot.totals.rake.share, num(RAKE_PCT));
+    assert.match(t.pot.vsNote, num(VS_LOSER_KEEPS_PCT));
     assert.match(l.pot.saboteurNote, num(SABOTEUR_POOL_PCT));
     assert.ok(!/0[.,]2%/.test(l.pot.saboteurNote), "the old 0.2% cap is gone");
     assert.ok(l.pot.passNote.length > 80);
@@ -53,11 +55,11 @@ test("the percentages written in the copy are the ones in the contract math", ()
   void ofPot;
   // The mandatory notice, word for word.
   assert.equal(
-    en.entry.saboteurNotice,
+    en.entry.saboteurNotice.replace(/\[\[t:[\s\S]*?\]\]/g, "").replace(/\[\[m:([\s\S]*?)\]\]/g, "$1"),
     "The arena includes up to 3 obstacle players (saboteurs). Saboteurs do not compete and cannot win: they are not on the podium, and they share 2% of the pot equally. A room starts only when it has 10 paid players and its saboteurs.",
   );
   assert.equal(
-    es.entry.saboteurNotice,
+    es.entry.saboteurNotice.replace(/\[\[t:[\s\S]*?\]\]/g, "").replace(/\[\[m:([\s\S]*?)\]\]/g, "$1"),
     "La arena incluye hasta 3 jugadores de obstáculo (saboteadores). Los saboteadores no compiten y no pueden ganar: no están en el podio y se reparten el 2% del pozo por igual. Una sala empieza solo cuando tiene 10 jugadores de pago y sus saboteadores.",
   );
 });

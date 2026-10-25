@@ -1,6 +1,9 @@
 import { youWord } from "../lib/play/staff.ts";
 // The live part of the play page: the game server connection, creating rooms, test funds, the lobby, the VS offer,
 // the arena canvas and the result. Loaded lazily by play.ts the first time a wallet connects.
+import { setLivePot, solBtc } from "./pot-live.ts";
+import { setPodiumPrizes } from "../lib/play/arena-paint.ts";
+import { duelPrize, royalePrizes, vsPrizes } from "../lib/play/prizes.ts";
 import { fill, node } from "../lib/play/dom.ts";
 import { verifyMatch } from "../lib/play/proof-check.ts";
 import { explorerTxUrl, shortAddress, type Cluster } from "../lib/play/config.ts";
@@ -271,6 +274,13 @@ export function createLive(host: LiveHost): Live {
     c.on("lobby", (m) => {
       if (m.roomId !== currentRoom) return;
       lastLobby = m;
+      // The pot of a room with an entry: every paid seat's fee, live on the board.
+      setLivePot(BigInt(m.entryFee) * BigInt(m.paid.length));
+      // What places 1 to 3 would take if it ended now, next to them on the board.
+      const fee = BigInt(m.entryFee), n = BigInt(Math.max(2, m.paid.length));
+      if (m.mode === "royale") { const p = royalePrizes(fee, BigInt(m.paid.length)); setPodiumPrizes([solBtc(p.first), solBtc(p.second), solBtc(p.third)]); }
+      else if (m.mode === "vs") { const p = vsPrizes(fee, n); setPodiumPrizes([solBtc(p.winner), solBtc(p.loser), solBtc(p.loser)]); }
+      else setPodiumPrizes([solBtc(duelPrize(fee, n).winner)]);
       showLobbyView();
       if (m.state === "waiting") {
         setText(lobbyEl, fill(m.mode === "vs" ? t.lobby.vsWaiting : t.lobby.waiting, { id: m.roomId, paid: m.paid.length, free: m.free.length }));
@@ -365,6 +375,8 @@ export function createLive(host: LiveHost): Live {
   }
 
   function onEnd(m: End) {
+    setLivePot(null);
+    setPodiumPrizes(null);
     document.querySelectorAll(".match-over").forEach((n) => n.remove());
     // The result card lives outside the full screen board: leave full screen so it is on screen, not behind a still board.
     window.dispatchEvent(new Event("goshi-leave-fs"));
@@ -595,7 +607,7 @@ export function createLive(host: LiveHost): Live {
   });
 
   createBtn.addEventListener("click", () => {
-    if (!host.gateOk()) return;
+    // Opening a room costs the player nothing: the notice is accepted in the window that takes the seat.
     const c = ready();
     if (!c) return;
     const fee = document.querySelector<HTMLInputElement>('input[name="play-fee"]:checked')?.value;

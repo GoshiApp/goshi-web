@@ -117,6 +117,22 @@ export class FxPool {
     this.add(Kind.Ring, x, y, 0, 0, 0.32, size, color);
   }
 
+  /** Two coins fusing: a beam of bits flows from one into the other (each arrives as its life ends), then rings swell where they meet. */
+  fuse(ax: number, ay: number, bx: number, by: number, size: number, color: number, rand: () => number = Math.random): void {
+    const d = Math.hypot(bx - ax, by - ay) || 1;
+    const speed = Math.max(220, d / 0.55);
+    const ux = (bx - ax) / d, uy = (by - ay) / d;
+    for (let k = 0; k < 18; k++) {
+      const t = k / 18;
+      const x = ax + (bx - ax) * t + (rand() - 0.5) * size * 0.6, y = ay + (by - ay) * t + (rand() - 0.5) * size * 0.6;
+      const left = Math.hypot(bx - x, by - y);
+      this.add(Kind.Spark, x, y, ux * speed, uy * speed, Math.max(0.05, left / speed), size * (0.35 + rand() * 0.3), color);
+    }
+    this.add(Kind.Ring, bx, by, 0, 0, 0.5, size * 1.6, color);
+    this.add(Kind.Ring, bx, by, 0, 0, 0.8, size * 2.6, color);
+    this.burst(bx, by, 10, 140, size * 0.45, color, rand);
+  }
+
   /** One boost trail sparkle. */
   spark(x: number, y: number, size: number, color: number, rand: () => number = Math.random): void {
     this.add(Kind.Spark, x + (rand() - 0.5) * size * 2, y + (rand() - 0.5) * size * 2, (rand() - 0.5) * 40, (rand() - 0.5) * 40, 0.35 + rand() * 0.25, size * 0.5, color);

@@ -34,7 +34,7 @@ interface Data {
   symbol: string;
   unitSol: string;
   unitGoshi: string;
-  settings: ConstructorParameters<typeof PlayClient>[0] & { serverUrl: string; regions?: { id: string; url: string }[]; regionSlot?: number };
+  settings: ConstructorParameters<typeof PlayClient>[0] & { serverUrl: string; liveUrl?: string; regions?: { id: string; url: string }[]; regionSlot?: number };
   walletNames: Record<WalletId, string>;
   homeHref: string;
   t: {
@@ -302,7 +302,19 @@ async function boot(d: Data) {
     let understood = false;
     try { understood = sessionStorage.getItem("goshi-entry-v1") === "1"; } catch { /* private mode */ }
     entryAccept.checked = understood;
-    entryOk.setAttribute("aria-disabled", String(!understood));
+    // Everything to accept is in this one window: the notice of the page (age, local law, test network) is ticked here too
+    // when it was not ticked yet, so nobody has to hunt for a box further down the page.
+    const gateWrap = document.getElementById("play-entry-gate-wrap");
+    const gateHere = document.getElementById("play-entry-gate") as HTMLInputElement | null;
+    const needGate = !accepted || (netBox !== null && !netBox.checked);
+    if (gateWrap && gateHere) {
+      gateWrap.hidden = !needGate;
+      gateHere.checked = false;
+      const netText = netBox ? ` ${document.querySelector("#play-gate .gate-check:nth-of-type(2) span")?.textContent ?? ""}` : "";
+      setText(document.getElementById("play-entry-gate-text")!, `${document.querySelector("#play-gate .gate-check span")?.textContent ?? ""}${netText}`);
+    }
+    const ready = () => entryAccept.checked && (!needGate || !!gateHere?.checked);
+    entryOk.setAttribute("aria-disabled", String(!ready()));
     setText(entryMsg, "");
     return new Promise<boolean>((resolve) => {
       const cancel = $("play-entry-cancel");
@@ -320,15 +332,19 @@ async function boot(d: Data) {
       };
       // The confirm button only works after the box is ticked. It stays focusable and says why.
       const onOk = () => {
-        if (!entryAccept.checked) { setText(entryMsg, t.entry.mustAccept); entryAccept.focus(); return; }
+        if (!ready()) { setText(entryMsg, t.entry.mustAccept); (entryAccept.checked ? gateHere : entryAccept)?.focus(); return; }
+        if (needGate) {
+          for (const g of [gateBox, netBox]) if (g && !g.checked) { g.checked = true; g.dispatchEvent(new Event("change", { bubbles: true })); }
+        }
         try { sessionStorage.setItem("goshi-entry-v1", "1"); } catch { /* private mode */ }
         finish(true);
       };
       const onCancel = () => finish(false);
       const onAccept = () => {
-        entryOk.setAttribute("aria-disabled", String(!entryAccept.checked));
-        if (entryAccept.checked) setText(entryMsg, "");
+        entryOk.setAttribute("aria-disabled", String(!ready()));
+        if (ready()) setText(entryMsg, "");
       };
+      gateHere?.addEventListener("change", onAccept);
       entryOk.addEventListener("click", onOk);
       cancel.addEventListener("click", onCancel);
       entryAccept.addEventListener("change", onAccept);
@@ -339,6 +355,14 @@ async function boot(d: Data) {
   }
 
   // ------------------------------------------------------------------ wallet
+  /** Brings the connect buttons into view, opening "Advanced options" first on the test site (they live behind it there). */
+  function showWallet() {
+    const adv = document.getElementById("play-advanced") as HTMLDetailsElement | null;
+    if (adv && !adv.open) adv.open = true;
+    requestAnimationFrame(() => document.getElementById("play-wallet")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }
+  // Arrived with #play-wallet (the header button on another page): the wallet must be visible at once.
+  if (location.hash === "#play-wallet") showWallet();
   function detectWallets() {
     for (const id of WALLET_IDS) {
       const found = isInstalled(id);
@@ -684,7 +708,7 @@ async function boot(d: Data) {
   }
 
   async function onJoin(roomId: bigint, asSaboteur: boolean): Promise<boolean> {
-    if (busy || !gateOk() || !needWallet()) return false;
+    if (busy || !needWallet()) return false;
     const room = rooms.find((r) => r.roomId === roomId);
     if (!room) return false;
     const id = roomId.toString();
@@ -697,12 +721,24 @@ async function boot(d: Data) {
           { label: t.entry.youPay, value: withSol(room.entryFee), total: true },
           { label: t.entry.goesTo, value: fill(t.entry.room, { id }) },
         ];
+    // The backpack (contract v6, test site): a share of the entry kept for traps and refunded when it is not spent.
+    const bpSel = document.getElementById("play-entry-backpack") as HTMLSelectElement | null;
+    const bpWrap = document.getElementById("play-entry-backpack-wrap");
+    if (bpSel && bpWrap) {
+      bpWrap.hidden = asSaboteur;
+      bpSel.replaceChildren(
+        node("option", { text: bpSel.dataset.none ?? "", attrs: { value: "0" } }),
+        ...[25n, 50n, 100n].map((pct) => node("option", { text: fill(bpSel.dataset.option ?? "", { pct: String(pct), n: sol((room.entryFee * pct) / 100n) }), attrs: { value: ((room.entryFee * pct) / 100n).toString() } })),
+      );
+      bpSel.value = (room.entryFee / 2n).toString();
+    }
     const ok = await confirmEntry(fill(asSaboteur ? t.entry.freeTitle : t.entry.paidTitle, { id }), asSaboteur ? t.entry.freeText : t.entry.paidText, lines, asSaboteur);
     if (!ok) return false;
+    const backpack = !asSaboteur && bpSel ? BigInt(bpSel.value || "0") : 0n;
     // Only now does the page ask the wallet to sign. When the join is final on the network, enter the room on the game server.
     const done = await runTx(async (cb) => {
       const c = await getClient();
-      return asSaboteur ? c.joinFree(roomId, wallet.signer, cb) : c.joinRoom(roomId, wallet.signer, cb);
+      return asSaboteur ? c.joinFree(roomId, wallet.signer, cb) : c.joinRoom(roomId, wallet.signer, cb, backpack);
     }, () => void onJoin(roomId, asSaboteur));
     if (done) {
       // Take the seat to the game server without a reload. If the live module is still loading it is entered as soon as it is ready.
@@ -754,11 +790,10 @@ async function boot(d: Data) {
       // The connect popup only ever opens from a click on Connect: remember the choice and continue when connected.
       pendingQuick = i;
       quickSay(fill(t.quick.needWallet, { usd: usdText(opt.usd, d.locale) }));
-      document.getElementById("play-wallet")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      showWallet();
       document.querySelector<HTMLElement>("[data-connect]")?.focus();
       return;
     }
-    if (!gateOk()) { pendingQuick = i; return; }
     quickBusy = true;
     quickSay(t.quick.searching);
     try {
@@ -886,7 +921,7 @@ async function boot(d: Data) {
     if (!opt || duelBusy || busy) return;
     if (wallet.current.status !== "connected") {
       duelSay(dt.needWallet);
-      document.getElementById("play-wallet")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      showWallet();
       document.querySelector<HTMLElement>("[data-connect]")?.focus();
       return;
     }
@@ -924,7 +959,7 @@ async function boot(d: Data) {
   async function acceptDuel(roomId: string) {
     if (wallet.current.status !== "connected") {
       duelSay(dt.needWallet);
-      document.getElementById("play-wallet")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      showWallet();
       document.querySelector<HTMLElement>("[data-connect]")?.focus();
       return;
     }
@@ -1099,6 +1134,89 @@ async function boot(d: Data) {
   }
   void refreshLive();
   setInterval(() => { if (document.visibilityState === "visible") void refreshLive(); }, 15_000);
+
+  // ------------------------------------------------------------------ bought length (live arena)
+  // The live arena asks for one step of length: this page holds the wallet, so it pays the house and hands the signature back.
+  window.addEventListener("goshi-pay-length", () => {
+    void (async () => {
+      let sig: string | null = null;
+      try {
+        if (wallet.current.status !== "connected") throw new Error("wallet");
+        const c = await getClient();
+        sig = await c.payHouse(10_000_000n, wallet.signer);
+        void refreshBalances();
+      } catch (e) {
+        log("length payment failed", e);
+      }
+      window.dispatchEvent(new CustomEvent("goshi-length-paid", { detail: { sig } }));
+    })();
+  });
+
+  // ------------------------------------------------------------------ cash arena entry (test network)
+  // Tickets bought in this browser, by wallet (kept 48 h, like a ticket on the server; dropped once the server says it was used).
+  const TICKETS_KEY = "goshi-cash-tickets";
+  type LocalTicket = { w: string; sig: string; lamports: number; at: number };
+  const readTickets = (): LocalTicket[] => { try { return (JSON.parse(localStorage.getItem(TICKETS_KEY) ?? "[]") as LocalTicket[]).filter((t) => Date.now() - t.at < 48 * 3600_000); } catch { return []; } };
+  const writeTickets = (l: LocalTicket[]) => { try { localStorage.setItem(TICKETS_KEY, JSON.stringify(l)); } catch { /* private mode */ } };
+  function rememberTicket(w: string, sig: string, lamports: number) { writeTickets([...readTickets().filter((t) => t.sig !== sig), { w, sig, lamports, at: Date.now() }]); }
+  function localTickets(w: string) { return readTickets().filter((t) => t.w === w).map((t) => ({ sig: t.sig, lamports: t.lamports })); }
+  window.addEventListener("goshi-ticket-used", (e) => { const sig = (e as CustomEvent<{ sig: string }>).detail.sig; writeTickets(readTickets().filter((t) => t.sig !== sig)); });
+
+  // The page asks for the unused tickets of the connected wallet (to show them next to the arena button).
+  window.addEventListener("goshi-cash-tickets-ask", () => {
+    void (async () => {
+      let tickets: { sig: string; lamports: number }[] = [];
+      try {
+        const a = me();
+        if (a) {
+          const base = (d.settings.liveUrl ?? d.settings.serverUrl).replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+          tickets = ((await (await fetch(`${base}/cash/tickets/${a}`, { signal: AbortSignal.timeout(8000) })).json()) as { tickets?: { sig: string; lamports: number }[] }).tickets ?? [];
+        }
+      } catch { /* the server list failed: the ones kept here still show */ }
+      const a2 = me();
+      if (a2) for (const t of localTickets(a2)) if (!tickets.some((x) => x.sig === t.sig)) tickets.push(t);
+      window.dispatchEvent(new CustomEvent("goshi-cash-tickets", { detail: { tickets } }));
+    })();
+  });
+
+  // The cash arenas of the test network, one per entry, for the chooser.
+  window.addEventListener("goshi-arenas-ask", () => {
+    void (async () => {
+      let arenas: unknown[] = [];
+      try {
+        const r = await fetch(`${(d.settings.liveUrl ?? d.settings.serverUrl).replace(/^wss:/, "https:").replace(/^ws:/, "http:")}/live`, { signal: AbortSignal.timeout(6000) });
+        arenas = ((await r.json()) as { arenas?: unknown[] }).arenas ?? [];
+      } catch { /* none: the page goes straight to the only arena */ }
+      window.dispatchEvent(new CustomEvent("goshi-arenas", { detail: { arenas } }));
+    })();
+  });
+
+  // Buying a ticket for a cash arena (test network): one payment of that arena's entry from the wallet to the vault. The ticket is
+  // the payment itself, on chain; it is also kept in this browser at once (the server's list can take a few seconds to show it).
+  window.addEventListener("goshi-cash-buy", (ev) => {
+    const want = (ev as CustomEvent<{ arena: string }>).detail.arena;
+    void (async () => {
+      let out: { sig: string | null; lamports: number; error?: string } = { sig: null, lamports: 0 };
+      try {
+        const a = me();
+        if (!a) throw new Error("wallet");
+        const r = await fetch(`${(d.settings.liveUrl ?? d.settings.serverUrl).replace(/^wss:/, "https:").replace(/^ws:/, "http:")}/live`, { signal: AbortSignal.timeout(8000) });
+        const j = (await r.json()) as { arena?: { cash?: { vault: string } }; arenas?: { id: string; entry: number }[] };
+        const vault = j.arena?.cash?.vault;
+        const pick = j.arenas?.find((x) => x.id === want);
+        if (!vault || !pick) throw new Error("arena");
+        out.lamports = pick.entry;
+        const c = await getClient();
+        out.sig = await c.payTo(vault, BigInt(pick.entry), wallet.signer);
+        rememberTicket(a, out.sig, pick.entry);
+        void refreshBalances();
+      } catch (err) {
+        log("ticket purchase failed", err);
+        out.error = String((err as Error)?.message ?? err).slice(0, 80);
+      }
+      window.dispatchEvent(new CustomEvent("goshi-cash-bought", { detail: out }));
+    })();
+  });
 
   // ------------------------------------------------------------------ start
   // The header chip restores the last connection silently; this page follows the same wallet session.

@@ -26,11 +26,13 @@ export interface QualitySettings {
 export const SETTINGS: Readonly<Record<Level, QualitySettings>> = {
   0: { shadowGlow: true, layeredGlow: false, shine: true, particles: true, vignette: true, dprCap: 1.5 },
   1: { shadowGlow: false, layeredGlow: true, shine: true, particles: true, vignette: true, dprCap: 1.25 },
-  2: { shadowGlow: false, layeredGlow: false, shine: false, particles: false, vignette: false, dprCap: 1 },
+  2: { shadowGlow: false, layeredGlow: false, shine: true, particles: true, vignette: false, dprCap: 1 },
 };
 
-/** Average frame time above this over a window means the device cannot keep up. */
+/** Average frame time above this over a window means the device cannot keep up (the ceiling, for 60 Hz screens). */
 export const SLOW_FRAME_MS = 20;
+/** On faster screens the limit is this many times the screen's own frame time (10 ms on 120 Hz). */
+export const SLOW_FRAME_RATIO = 1.2;
 export const WINDOW_MS = 1500;
 export const RECOVER_AFTER_MS = 6000;
 export const MAX_RECOVER_MS = 60_000;
@@ -55,6 +57,8 @@ export class QualityManager {
   private goodMs = 0;
   private recoverWait = RECOVER_AFTER_MS;
   private lastRecoverAt = -1e9;
+  /** The screen's frame time: the best window average seen so far. */
+  private refreshMs = 1000 / 60;
 
   constructor(store: QualityStorage | null = null) {
     this.store = store;
@@ -91,7 +95,7 @@ export class QualityManager {
 
   /**
    * One frame took `frameMs` (the time between two frames) and ended at `nowMs`. Returns true when the level changed.
-   * Drops one level when a 1.5 s window averages more than 20 ms; goes back up one level after 6 s of good windows
+   * Drops one level when a 1.5 s window averages more than 20 ms (or 1.2x the screen's frame time when it is faster); goes back up one level after 6 s of good windows
    * (and waits twice as long each time a recovery is followed by a drop within 10 s).
    */
   record(frameMs: number, nowMs: number): boolean {
@@ -104,7 +108,8 @@ export class QualityManager {
     if (span < WINDOW_MS) return false;
     const avg = this.sum / this.count;
     this.resetWindow();
-    if (avg > SLOW_FRAME_MS) {
+    if (avg < this.refreshMs) this.refreshMs = Math.max(4, avg);
+    if (avg > Math.min(SLOW_FRAME_MS, this.refreshMs * SLOW_FRAME_RATIO)) {
       this.goodMs = 0;
       if (this.auto < 2) {
         // Dropping soon after a recovery means the level above is too much for this device: wait longer next time.

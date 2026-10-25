@@ -61,6 +61,8 @@ const playTest: PlayConfig = withLocalOverride({
     { id: "eu", url: "wss://goshi-play-server-suxisoytmq-ew.a.run.app" },
     { id: "us", url: "wss://goshi-play-server-suxisoytmq-uc.a.run.app" },
   ],
+  // The paid arenas: a dedicated machine in Belgium (europe-west1), CPU of its own for the games with money.
+  liveUrl: "wss://34-53-216-4.sslip.io",
   token: { symbol: "GOSHI", name: "Goshi" },
   audited: false,
 });
@@ -74,6 +76,7 @@ const play: PlayConfig = isLab
   ? {
       ...playTest,
       serverUrl: "wss://goshi-play-server-lab-suxisoytmq-ew.a.run.app",
+      liveUrl: undefined,
       regions: [
         { id: "eu", url: "wss://goshi-play-server-lab-suxisoytmq-ew.a.run.app" },
         { id: "us", url: "wss://goshi-play-server-lab-suxisoytmq-uc.a.run.app" },
@@ -90,6 +93,14 @@ export const site = {
   soundPack: true,
   /** Bot levels in practice: only where there are bots to choose (test and lab); the real game has no bots. */
   botLevels: isTest,
+  /** The simple room flow (welcome once, three buttons, lobby): test and lab only until the owner moves it to the real game. */
+  lobby: isTest,
+  /** Traps and the backpack (contract v6): test and lab until the program on mainnet is upgraded. */
+  traps: isTest,
+  /** The power buttons in the arena (lasers, puddles, kamikaze, shield, cash out): on every site; free practice uses them everywhere. */
+  powers: true,
+  /** Guest onboarding wizard (name + color, then mode cards): test only, never the lab. */
+  guestOnboarding: isTest && !isLab,
   domain: isLab ? "lab.goshi.app" : isTest ? "test.goshi.app" : "goshi.app",
   url: isLab ? "https://lab.goshi.app" : isTest ? "https://test.goshi.app" : "https://goshi.app",
   /**

@@ -21,7 +21,7 @@ export interface SkinStyle {
   glowA: string;
   glowB: string;
   /** A meme head drawn instead of the goshi face. */
-  art?: "pepe" | "shiba" | "doge" | "bonk" | "popcat" | "wif";
+  art?: "pepe" | "shiba" | "doge" | "bonk" | "popcat" | "wif" | "fox" | "laser" | "btc" | "eth" | "sol" | "whale" | "degen" | "rugged" | "moonboy" | "panda";
 }
 
 export interface Skin { id: string; rarity: Rarity; unlock: Unlock; style: SkinStyle }
@@ -51,8 +51,18 @@ export const SKINS: readonly Skin[] = [
   { id: "shiba", rarity: "meme", unlock: { kind: "games", n: 12 }, style: { ...hsl(32, 85, 56), head: "#f2b05a", rim: "#ffd29a", art: "shiba" } },
   { id: "doge", rarity: "meme", unlock: { kind: "best", n: 150 }, style: { ...hsl(40, 62, 66), head: "#f3e1b0", rim: "#fff0c8", art: "doge" } },
   { id: "bonk", rarity: "meme", unlock: { kind: "games", n: 25 }, style: { ...hsl(38, 95, 55), head: "#ffc34a", rim: "#ffe08a", art: "bonk" } },
+  { id: "fox", rarity: "meme", unlock: { kind: "games", n: 35 }, style: { ...hsl(20, 85, 52), head: "#e8b088", rim: "#ffc898", art: "fox" } },
   { id: "popcat", rarity: "meme", unlock: { kind: "best", n: 300 }, style: { ...hsl(340, 70, 78), head: "#fff1f1", rim: "#ffd0dc", art: "popcat" } },
   { id: "wif", rarity: "meme", unlock: { kind: "games", n: 40 }, style: { ...hsl(30, 45, 60), head: "#e9c9a0", rim: "#ffe2c0", art: "wif" } },
+  { id: "bitcoin", rarity: "rare", unlock: { kind: "games", n: 30 }, style: { ...hsl(28, 95, 55), head: "#f7931a", rim: "#ffc25e", alt: "hsl(40 100% 72%)", art: "btc" } },
+  { id: "ethereum", rarity: "rare", unlock: { kind: "best", n: 350 }, style: { ...hsl(265, 80, 62), head: "#8a7fd4", rim: "#c0b6f5", alt: "hsl(245 70% 82%)", art: "eth" } },
+  { id: "solana", rarity: "epic", unlock: { kind: "games", n: 45 }, style: two(150, 275, { head: "#0b0b14", rim: "#14f195", art: "sol" }) },
+  { id: "laser-eyes", rarity: "epic", unlock: { kind: "best", n: 600 }, style: { ...hsl(46, 100, 55), head: "#ffd76a", rim: "#ffe9a1", glowB: "hsla(46 100% 60% / 0.5)", alt: "hsl(0 90% 56%)", art: "laser" } },
+  { id: "whale", rarity: "epic", unlock: { kind: "games", n: 60 }, style: { ...hsl(215, 80, 45), head: "#4a86e8", rim: "#8ab5f5", art: "whale" } },
+  { id: "degen", rarity: "meme", unlock: { kind: "streak", n: 5 }, style: two(300, 60, { head: "#ffb3e2", rim: "#ffd76a", art: "degen" }) },
+  { id: "rugged", rarity: "common", unlock: { kind: "free" }, style: { ...hsl(220, 10, 55), head: "#a8adb8", rim: "#d0d4dc", alt: "hsl(355 55% 50%)", art: "rugged" } },
+  { id: "panda", rarity: "common", unlock: { kind: "free" }, style: { body: "hsl(0 0% 95%)", alt: "hsl(0 0% 12%)", head: "#fbfbfb", rim: "#ffffff", glowA: "hsla(0 0% 100% / 0.18)", glowB: "hsla(0 0% 100% / 0.4)", art: "panda" } },
+  { id: "moonboy", rarity: "epic", unlock: { kind: "streak", n: 10 }, style: { ...hsl(230, 70, 40), head: "#3353c9", rim: "#6f8bf0", alt: "hsl(48 100% 66%)", art: "moonboy" } },
   { id: "holder-bronze", rarity: "holder", unlock: { kind: "hold", n: 20 }, style: two(28, 18, { head: "#ffe3c8", rim: "#ffb27a" }) },
   { id: "holder-silver", rarity: "holder", unlock: { kind: "hold", n: 200 }, style: { ...two(215, 195, { head: "#f2f6ff", rim: "#cfe0ff" }), body: "hsl(215 20% 78%)" } },
   { id: "holder-gold", rarity: "holder", unlock: { kind: "hold", n: 1000 }, style: two(48, 36, { head: "#fffbe0", rim: "#fff1a1", glowA: "hsla(48 100% 60% / 0.3)", glowB: "hsla(48 100% 60% / 0.65)" }) },

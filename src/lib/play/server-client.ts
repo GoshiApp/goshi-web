@@ -5,6 +5,7 @@
 import { selectedSkin } from "./skins.ts";
 import { storedReferral } from "./referral.ts";
 import { visitorId } from "./visitor.ts";
+import type { TrapK } from "./protocol.ts";
 import {
   authMessage, siwsMessage, backoffMs, bytesToBase58, createRoomMessage, decodeServer, encodeClient, inputMessage, RateLimiter,
   type ClientMsg, type Rules, type ServerMsg,
@@ -71,6 +72,8 @@ export interface ClientEvents {
   vsStarted: Extract<ServerMsg, { t: "vsStarted" }>;
   vsDeclined: Extract<ServerMsg, { t: "vsDeclined" }>;
   entered: Extract<ServerMsg, { t: "entered" }>;
+  groomCreated: Extract<ServerMsg, { t: "groom_created" }>;
+  groomUpdate: Extract<ServerMsg, { t: "groom_update" }>;
   lobby: Extract<ServerMsg, { t: "lobby" }>;
   start: Extract<ServerMsg, { t: "start" }>;
   live: Extract<ServerMsg, { t: "live" }>;
@@ -327,6 +330,8 @@ export class ServerClient {
       case "vsStarted": this.emit("vsStarted", msg); return;
       case "vsDeclined": this.emit("vsDeclined", msg); return;
       case "entered": this.emit("entered", msg); return;
+      case "groom_created": this.emit("groomCreated", msg); return;
+      case "groom_update": this.emit("groomUpdate", msg); return;
       case "lobby": this.emit("lobby", msg); return;
       case "start": this.emit("start", msg); return;
       case "live": this.emit("live", msg); return;
@@ -411,7 +416,9 @@ export class ServerClient {
   /** Tells the server which cosmetic skin this wallet wears (it is checked there). Cheap: sent at sign in and at every entry. */
   sendSkin(): void {
     try {
-      const id = selectedSkin();
+      // The skin, or the goshi color as "hue:N": every screen and every replay show the body as its owner chose it.
+      let id = selectedSkin();
+      if (!id) { try { const h = localStorage.getItem("goshi-color"); if (h !== null && /^[0-7]$/.test(h)) id = `hue:${h}`; } catch { /* storage blocked */ } }
       if (id) this.send({ t: "skin", id });
     } catch { /* cosmetic only */ }
   }
@@ -427,14 +434,28 @@ export class ServerClient {
   vs(roomId: string, accept: boolean): boolean { return this.send({ t: "vs", roomId, accept }); }
   faucet(): boolean { return this.send({ t: "faucet" }); }
   /** Starts a free practice match against bots (no wallet, no money). `name` is cleaned and cut by the server. */
-  liveWatch(): boolean { return this.send({ t: "live_watch" }); }
-  liveJoin(name?: string, wallet?: string, skin?: string): boolean { return this.send({ t: "live_join", ...(name ? { name } : {}), ...(wallet ? { wallet } : {}), ...(skin ? { skin } : {}) }); }
+  /** The live arena chosen (one per entry on the test network); null is the first one. */
+  liveArena: string | null = null;
+  liveWatch(): boolean { return this.send({ t: "live_watch", ...(this.liveArena ? { arena: this.liveArena } : {}) }); }
+  liveJoin(name?: string, wallet?: string, skin?: string, entrySig?: string): boolean { return this.send({ t: "live_join", ...(this.liveArena ? { arena: this.liveArena } : {}), ...(name ? { name } : {}), ...(wallet ? { wallet } : {}), ...(skin ? { skin } : {}), ...(entrySig ? { entrySig } : {}) }); }
   liveLeave(): boolean { return this.send({ t: "live_leave" }); }
   afk(on: boolean): boolean { return this.send({ t: "afk", on }); }
+  /** Sets a trap behind the tail: 1 a laser, 2 a slowing puddle. */
+  trap(kind: TrapK): boolean { return this.send({ t: "trap", kind }); }
+  /** Live arena: one more step of length, paid with the transaction `sig` (checked on chain by the server). */
+  buyLength(sig: string): boolean { return this.send({ t: "buyLength", sig }); }
   practice(name: string, wallet?: string, difficulty?: "easy" | "medium" | "hard" | "insane", mode?: "survival" | "show"): boolean { return this.send({ t: "practice", name, ...(wallet ? { wallet } : {}), ...(difficulty ? { difficulty } : {}), ...(mode ? { mode } : {}) }); }
   watch(roomId: string): boolean { return this.send({ t: "watch", roomId }); }
   enter(roomId: string): boolean { this.sendSkin(); return this.send({ t: "enter", roomId }); }
   leave(roomId: string): boolean { return this.send({ t: "leave", roomId }); }
+  /** Opens a free guest room and answers with `groom_created` (devnet/test servers only). */
+  groomCreate(name: string): boolean { return this.send({ t: "groom_create", name }); }
+  /** Joins a free guest room by its code. Answer: `groom_created`, or `error no_room | busy`. */
+  groomJoin(name: string, code: string): boolean { return this.send({ t: "groom_join", name, code }); }
+  /** Starts the guest room of this socket (host only). Answer: `entered` + `start`, or `error not_host`. */
+  groomStart(): boolean { return this.send({ t: "groom_start" }); }
+  /** Leaves the guest room of this socket. The others get a `groom_update`. */
+  groomLeave(): boolean { return this.send({ t: "groom_leave" }); }
 
   /** Steering. At most 20 per second: extra calls are dropped (the next one carries the latest value). */
   sendInput(dx: number, dy: number, boost: boolean): boolean {

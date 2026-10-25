@@ -1,6 +1,7 @@
 ---
 // Interactive explainers for the new economy: a royale room (entry fee, paid players, saboteurs on the podium) and a VS match.
 // The math is src/lib/play/split.ts, the same code (and tests) that mirror the contract. The first view is already filled in.
+import { CONTRACT_V6 } from "../lib/play/contract";
 import { copy } from "../content";
 import { formatLamports, LAMPORTS_PER_SOL } from "../lib/play/amounts";
 import { royalePot, settleRoyale, settleVs } from "../lib/play/split";
@@ -12,20 +13,21 @@ const locale = lang === "es" ? "es" : "en-US";
 const f = (u: bigint) => formatLamports(u, { locale });
 // Defaults: 0.1 SOL, 10 paid players, 3 saboteurs, no pass seat; VS with 5 players.
 const fee = LAMPORTS_PER_SOL / 10n;
+const V6 = CONTRACT_V6;
 const pot = royalePot(fee, 10)!;
 const r = settleRoyale(pot, pot, 3)!;
 const v = settleVs(fee, 5)!;
 const royaleRows: { k: string; share: string; kind: "sol" | "goshi" | "none"; v: bigint; total?: boolean }[] = [
-  { k: "first", share: "52.8%", kind: "sol", v: r.prizes[0] },
-  { k: "second", share: "22%", kind: "sol", v: r.prizes[1] },
-  { k: "third", share: "13.2%", kind: "sol", v: r.prizes[2] },
+  { k: "first", share: V6 ? "57%" : "52.8%", kind: "sol", v: r.prizes[0] },
+  { k: "second", share: V6 ? "23.75%" : "22%", kind: "sol", v: r.prizes[1] },
+  { k: "third", share: V6 ? "14.25%" : "13.2%", kind: "sol", v: r.prizes[2] },
   { k: "saboteurEach", share: "2%", kind: "sol", v: r.saboteurEach },
-  { k: "burn", share: "1%", kind: "goshi", v: r.buybackBurn },
-  { k: "infra", share: "1.5%", kind: "sol", v: r.infra },
-  { k: "liquidity", share: "2.5%", kind: "sol", v: r.liquidity },
-  { k: "jackpot", share: "5%", kind: "goshi", v: r.rakeJackpot },
-  { k: "prizePool", share: "88%", kind: "none", v: r.prizePool, total: true },
-  { k: "rake", share: "10%", kind: "none", v: r.rake, total: true },
+  { k: "burn", share: V6 ? "0.3%" : "1%", kind: "goshi", v: r.buybackBurn },
+  { k: "infra", share: V6 ? "0.45%" : "1.5%", kind: "sol", v: r.infra },
+  { k: "liquidity", share: V6 ? "0.75%" : "2.5%", kind: "sol", v: r.liquidity },
+  { k: "jackpot", share: V6 ? "1.5%" : "5%", kind: "goshi", v: r.rakeJackpot },
+  { k: "prizePool", share: V6 ? "95%" : "88%", kind: "none", v: r.prizePool, total: true },
+  { k: "rake", share: V6 ? "3%" : "10%", kind: "none", v: r.rake, total: true },
   { k: "pot", share: "100%", kind: "none", v: pot, total: true },
   { k: "cash", share: "", kind: "none", v: pot },
 ];

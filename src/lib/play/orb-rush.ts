@@ -2,9 +2,11 @@
 // The game is simulated ONLY on the server. This file draws the snapshots it is given, reads the pointer, touch and
 // keyboard, and sends the steering back (at most 20 times per second). It never decides anything about the match.
 
+import type { TrapSnap } from "./protocol.ts";
 import type { ArenaContext, ArenaOutcome, ArenaStatus, RealtimeArena } from "./arena-adapter.ts";
-import { SnapBuffer } from "./interp.ts";
-import { ArenaPainter, type Floater, type PaintStrings, SABOTEUR_BODY, SABOTEUR_COLOR, colorFor, orbRadius, type LooseOrb } from "./arena-paint.ts";
+import { SnapBuffer, TickClock } from "./interp.ts";
+import { coinAmount } from "./coins.ts";
+import { ArenaPainter, BIG_ORB_MASS, type Floater, type PaintStrings, SABOTEUR_BODY, SABOTEUR_COLOR, colorFor, orbRadius, uiScale, type LooseOrb } from "./arena-paint.ts";
 import { TIER_SCALE, orbTier, shakeAmplitude, shakeOffset } from "./arena-fx.ts";
 import { ArenaDiag } from "./arena-diag.ts";
 import { ReportRecorder, buildReport, type Env } from "./arena-report.ts";
@@ -14,12 +16,16 @@ import { aliveRank, protectionSecondsLeft, viewSpan } from "./arena-view.ts";
 import { phaseKey, zoneDamagePerSecond, zoneStatus, zoneText, type ZoneStrings } from "./arena-zone.ts";
 import { MIN_MASS, START_MASS, speedOf, turnRateOf, advance, ahead, effectiveSpeed, extendBodyInto, headingOf, lookAheadSeconds, reconcile, smoothingFactor, type Kin } from "./predict.ts";
 import { classifyDeath, deathLine, type DeathStrings } from "./death.ts";
-import type { PlayerSnap, ServerMsg } from "./protocol.ts";
+import type { PlayerSnap, ServerMsg, TrapK } from "./protocol.ts";
+
+/** The cash arena only runs on the Solana devnet: its payouts are linked there on Solscan. */
+const CLUSTER_QS = "?cluster=devnet";
 
 type Start = Extract<ServerMsg, { t: "start" }>;
 type Snap = Extract<ServerMsg, { t: "snap" }>;
 type End = Extract<ServerMsg, { t: "end" }>;
 
+const NO_TRAPS: readonly TrapSnap[] = [];
 export interface OrbStrings {
   you: string;
   startAnnounce: string;
@@ -31,6 +37,40 @@ export interface OrbStrings {
   nextZone: string;
   /** "You are outside the safe zone: losing {n} mass per second" */
   zoneOutBanner: string;
+  /** "Your bag: {n} SOL" (a room paid by bag) */
+  bagLine?: string;
+  /** Rules 6: the boss line ({name}, {n} seconds) in each part of its cycle, and the cash out countdown. */
+  bossCalm?: string;
+  bossWarn?: string;
+  bossOpen?: string;
+  cashingOut?: string;
+  /** "For the big orbs you need mass {n}" (live arena) */
+  bigOrbNeed?: string;
+  /** "On the map {free} SOL · In the players' bags {held} SOL" */
+  solSplit?: string;
+  /** Cash arena info panel: title, lines ({n}, {in}, {pool}, {house}, {cut}, {outs}, {paid}, {kills}, {left}) and rotating tips. */
+  cashInfoTitle?: string;
+  cashInfoLines?: string[];
+  cashTips?: string[];
+  /** Rules 7: "Last 3: the zone holds still for {n} s, grab the coins" */
+  final3Freeze?: string;
+  /** Cash arena: the bag line ({bag}, {x}, {k}), the line once cashing out is open, the cash out result, and the boss call. */
+  cashLine?: string;
+  cashReady?: string;
+  cashedOut?: string;
+  /** Cash out result card and live lines: title, text ({bag}, {x}), stopped halfway ({bag}, {name}), the link, the sending line, others warned ({name}), the wallet line ({n}). */
+  cashOutTitle?: string;
+  cashOutText?: string;
+  cashOutStopped?: string;
+  cashOutStoppedText?: string;
+  cashOutSending?: string;
+  solscan?: string;
+  cashOtherWarn?: string;
+  cashToWallet?: string;
+  cashEntryOk?: string;
+  cashEntryBad?: string;
+  cashSignIn?: string;
+  bossAttack?: string;
   showerIn: string;
   showerLanded: string;
   endAnnounce: string;
@@ -73,6 +113,10 @@ export interface ArenaLink {
   readonly bytesIn?: number;
   /** The latest raw round trip sample (for the report). */
   readonly rttLastMs?: number;
+  /** Sets a trap behind the tail (1 laser, 2 puddle). Absent on links that cannot (the replay viewer). */
+  trap?(kind: TrapK): boolean;
+  /** Messages of the connection (the arena reads the answers to its traps). */
+  on?(e: "message", f: (m: { t: string; left?: string; reason?: string; bag?: number; entry?: number; id?: string; kind?: string | number; at?: number; hash?: string; ok?: boolean; lamports?: number; why?: string; sig?: string; full?: boolean; by?: string }) => void): () => void;
 }
 
 export interface OrbDeps {
@@ -137,7 +181,7 @@ export class OrbRushArena implements RealtimeArena {
   private reduced = false;
   private roomId = "";
   private you = "";
-  private world = { w: 3000, h: 3000 };
+  private world: { w: number; h: number; x0?: number; y0?: number } = { w: 3000, h: 3000 };
   private zoneStart = { cx: 1500, cy: 1500, r0: 1450, rMin: 150 };
   private matchMs = 300_000;
   private shrinkStartMs = 120_000;
@@ -185,6 +229,8 @@ export class OrbRushArena implements RealtimeArena {
   private lastPingSeen = 0;
   private gpuName: string | null = null;
   private paintStrings: PaintStrings | null = null;
+  private cashUi = false;
+  private cashUiForce = true;
   private readonly selfSnap = {} as PlayerSnap;
   private readonly selfHead: [number, number] = [0, 0];
   private readonly selfBody: [number, number][] = [];
@@ -193,11 +239,21 @@ export class OrbRushArena implements RealtimeArena {
   private lastPhaseKey: string | null = null;
   /** "-N" numbers while you are outside the zone, one a second. */
   private readonly floaters: Floater[] = [];
+  /** A room paid by bag: the lamports of your coins, from the last snapshot (null elsewhere). */
+  private myBag: number | null = null;
+  /** Rules 6: the boss of the last snapshot. */
+  private bossInfo: { w: string; st: "calm" | "warn" | "open"; in: number } | null = null;
+  /** Rules 7: seconds the zone still holds for the last three (0 when it does not). */
+  private freezeLeft = 0;
+  /** Rooms with money: SOL free on the map and SOL held in bags, from the last snapshot. */
+  private solNow: { free: number; held: number } | null = null;
   private floaterAt = 0;
   private outNow = false;
   private lastQualityLevel = -1;
   /** Reused for each snapshot (no new Map per message). */
   private readonly beforeMap = new Map<string, PlayerSnap>();
+  /** Stamps snapshots by server tick and measures the jitter that sets the live delay. */
+  private readonly clock = new TickClock();
   private readonly afterMap = new Map<string, PlayerSnap>();
   private shakeAt = -1e9;
   private shakeAmp = 0;
@@ -272,6 +328,8 @@ export class OrbRushArena implements RealtimeArena {
     this.specMap = false;
     this.specFree = false;
     this.specTarget = null;
+    // A new body: the power buttons come back as the next picture says (only cash out in the cash arena).
+    this.cashUiForce = true;
     this.kills = 0;
     this.peakMass = 0;
     this.setDeadOverlay(null);
@@ -339,6 +397,7 @@ export class OrbRushArena implements RealtimeArena {
     this.camSet = false;
     this.span = 0;
     this.setDeadOverlay(null);
+    this.cashUiForce = true;
     this.stopLoops();
     this.start();
     this.deps.announce(this.deps.strings.startAnnounce);
@@ -350,11 +409,25 @@ export class OrbRushArena implements RealtimeArena {
     const before = this.beforeMap;
     before.clear();
     if (prev) for (const p of prev.players) before.set(p.w, p);
-    const at = performance.now();
+    const arrival = performance.now();
+    const at = this.clock.stamp(arrival, msg.tick);
     this.buf.push({ at, tick: msg.tick, players: msg.players, zone: msg.zone });
+    this.traps = msg.traps ?? NO_TRAPS;
+    // A trap that was not there before, or a shield going up: its owner makes its special face (popcat pops...).
+    const nowMs = performance.now();
+    for (const t of this.traps) {
+      const key = `${t.o}:${t.k}:${t.x}:${t.y}`;
+      if (!this.seenTraps.has(key)) { this.seenTraps.add(key); this.painter.noteFired(t.o, nowMs); }
+    }
+    if (this.seenTraps.size > 400) this.seenTraps.clear();
+    for (const p of msg.players) {
+      if (p.sh && !this.shieldUp.has(p.w)) this.painter.noteFired(p.w, nowMs);
+      if (p.sh) this.shieldUp.add(p.w); else this.shieldUp.delete(p.w);
+    }
+    if (msg.world) this.world = msg.world;
     const total = this.deps.client.bytesIn ?? 0;
-    this.diag.snapshot(at, total - this.lastBytes);
-    this.rec.snapshot(at, total - this.lastBytes);
+    this.diag.snapshot(arrival, total - this.lastBytes);
+    this.rec.snapshot(arrival, total - this.lastBytes);
     this.lastBytes = total;
     // Each new phase or state is said once: the next zone is marked, it closes, the final zone.
     const key = phaseKey(msg.zone);
@@ -411,9 +484,15 @@ export class OrbRushArena implements RealtimeArena {
       if (ev.by === this.you && ev.w !== this.you) { this.kills++; this.deps.sound?.play("kill"); }
       if (ev.w === this.you) {
         this.dead = true;
-        this.specMap = true;
+        // Nothing is forced: the card offers the whole map, following someone, or looking around freely.
+        this.specMap = false;
+        // Dead, no power can be used: every power button goes away until the next body.
+        for (const b of Array.from(this.host?.querySelectorAll<HTMLElement>("[data-trap]") ?? [])) b.hidden = true;
+        this.cashUi = true;
         this.finalRank = ev.rank;
-        this.setDeadOverlay({ rank: ev.rank, why: line });
+        const mine = before.get(this.you);
+        if (ev.by === "cashout" || (mine?.cb ?? 0) > 0) this.setCashOverlay(null, ev.by !== "cashout");
+        else this.setDeadOverlay({ rank: ev.rank, why: line });
       }
     }
   }
@@ -557,15 +636,52 @@ export class OrbRushArena implements RealtimeArena {
     const fx = this.painter.fx;
     const fresh = !this.reduced && this.painter.quality.particles;
     const me = msg.players.find((p) => p.w === this.you);
+    this.myBag = me && me.bag !== undefined ? me.bag : null;
+    // A room paid by bag: the board shows every bag, not the mass.
+    if (msg.players.some((p) => p.bag !== undefined)) this.painter.setBags(new Map(msg.players.map((p) => [p.w, p.bag ?? 0])));
+    this.bossInfo = msg.boss ?? null;
+    // The SOL of a boost that just ended explodes from the head and flies to the coins it became all over the map.
+    for (const pop of msg.pops ?? []) {
+      const coins = pop.ids.map((id) => this.orbs.get(id)).filter((o): o is NonNullable<typeof o> => !!o);
+      const who = msg.players.find((p) => p.w === pop.w);
+      // A big flash at the head (the coins themselves fly far, often off screen) and the amount that left.
+      if (coins.length) this.painter.supernova([pop.x, pop.y], [], Math.max(14, (who?.r ?? 10) * 1.6), "#14f195", coins, performance.now());
+      const lost = coins.reduce((n, o) => n + (o.q ?? 0), 0);
+      if (lost > 0) this.floaters.push({ x: pop.x, y: pop.y, text: `-${lost.toFixed(9)} SOL`, age: -1 });
+    }
+    // The cash arena has only one power, cashing out: the other buttons are not shown there.
+    const cashNow = !!me?.en;
+    if (me && me.alive && (cashNow !== this.cashUi || this.cashUiForce)) {
+      this.cashUiForce = false;
+      this.cashUi = cashNow;
+      for (const b of Array.from(this.host?.querySelectorAll<HTMLElement>("[data-trap]") ?? [])) b.hidden = b.dataset.trap !== "5" && cashNow;
+    }
+    this.freezeLeft = msg.freeze ?? 0;
+    this.solNow = msg.sol ?? null;
+    this.cashInfo(msg.cashInfo);
+    // Coins that fused on the map: a beam from one into the other and a swell where they meet.
+    if (fresh) for (const [ax, ay, bx, by] of msg.fuses ?? []) fx.fuse(ax, ay, bx, by, 14, 3);
+    // Coins the zone left outside: they leave without a mouth near them, and fuse into a new coin inside (rules 5).
+    const outside: LooseOrb[] = [];
+    const z = msg.zone;
     for (const id of msg.eatenOrbs) {
       const o = this.orbs.get(id);
       if (!o) continue;
       this.orbs.delete(id);
+      if (z && Math.hypot(o.x - z.cx, o.y - z.cy) > z.r && !msg.players.some((p) => p.alive && Math.hypot(p.head[0] - o.x, p.head[1] - o.y) < p.r + 40)) {
+        outside.push(o);
+        continue;
+      }
       if (fresh) {
         const tier = orbTier(o.v, o.loot === true);
         fx.pop(o.x, o.y, orbRadius(o.v) * TIER_SCALE[tier] * 1.6, tier);
       }
-      if (me && me.alive && Math.hypot(me.head[0] - o.x, me.head[1] - o.y) < me.r + 36) this.deps.sound?.play(o.v >= 4 ? "bonus" : "eat");
+      if (me && me.alive && Math.hypot(me.head[0] - o.x, me.head[1] - o.y) < me.r + 36) {
+        this.deps.sound?.play(o.v >= 4 ? "bonus" : "eat");
+        // A coin of the market says what it was: "+24 sats", "+0.25 DOGE".
+        // Only a coin that really carries SOL says what it was worth: "+0.0012 SOL".
+        if (o.c === "SOL" && o.q) this.floaters.push({ x: o.x, y: o.y, text: `+${coinAmount(o.c, o.q)}`, age: 0 });
+      }
       // Whoever has the orb at its mouth is the one that ate it: a happy face for a moment.
       for (const p of msg.players) {
         if (p.alive && Math.hypot(p.head[0] - o.x, p.head[1] - o.y) < p.r + 40) { this.painter.noteAte(p.w, performance.now()); break; }
@@ -573,9 +689,33 @@ export class OrbRushArena implements RealtimeArena {
     }
     // A body turned into orbs arrives as a batch next to a death: those are drawn bigger and golden.
     const lootBatch = msg.events.length > 0 && msg.newOrbs.length >= 6;
+    if (msg.orbIds) { const keep = new Set(msg.orbIds); for (const id of [...this.orbs.keys()]) if (!keep.has(id)) this.orbs.delete(id); }
+    // A coin born and eaten in the same picture is never drawn (otherwise it would stay on screen, gone on the server).
+    const eatenHere = new Set(msg.eatenOrbs);
     for (const o of msg.newOrbs) {
+      if (eatenHere.has(o.id)) continue;
       const loot = lootBatch || !Number.isInteger(o.v);
       this.orbs.set(o.id, loot ? { ...o, loot: true } : o);
+    }
+    // Each piece left outside glows, and they fly together into the bigger coin they fused into, just inside the edge.
+    if (outside.length && fresh && z) {
+      const now = performance.now();
+      const groups = new Map<Snap["newOrbs"][number], LooseOrb[]>();
+      for (const o of outside) {
+        let best: Snap["newOrbs"][number] | null = null, bd = Infinity;
+        for (const n of msg.newOrbs) {
+          const d = Math.hypot(n.x - o.x, n.y - o.y);
+          if (d < bd && Math.hypot(n.x - z.cx, n.y - z.cy) <= z.r) { bd = d; best = n; }
+        }
+        if (!best) continue;
+        fx.pop(o.x, o.y, orbRadius(o.v) * 2.4, 3);
+        const g = groups.get(best);
+        if (g) g.push(o); else groups.set(best, [o]);
+      }
+      for (const [target, pieces] of groups) {
+        const cx = pieces.reduce((n, o) => n + o.x, 0) / pieces.length, cy = pieces.reduce((n, o) => n + o.y, 0) / pieces.length;
+        this.painter.supernova([cx, cy], [], orbRadius(target.v) * 1.5, "#ffd34d", [this.orbs.get(target.id) ?? target], now);
+      }
     }
     // Boost: a player that moved clearly faster than its normal speed since the last snapshot.
     this.boosting.clear();
@@ -588,7 +728,14 @@ export class OrbRushArena implements RealtimeArena {
         if (v > speedOf(p.m) * 1.35) this.boosting.add(p.w);
       }
     }
-    // Death: a burst along the body that was there (the snapshot of the death has no body any more).
+    // Death: a supernova where the body was (the snapshot of the death has no body any more), and its coins fly to where they land.
+    const deadNow = msg.events.filter((ev) => before.get(ev.w)?.alive);
+    const lootCoins = deadNow.length && msg.newOrbs.length >= 6 ? msg.newOrbs : [];
+    deadNow.forEach((ev, k) => {
+      const old = before.get(ev.w)!;
+      const share = lootCoins.filter((_, i) => i % deadNow.length === k);
+      if (fresh) this.painter.supernova(old.head, old.body, old.r, this.painter.styleFor(old).body, share, performance.now());
+    });
     for (const ev of msg.events) {
       const old = before.get(ev.w);
       if (!old || !old.alive) continue;
@@ -626,6 +773,29 @@ export class OrbRushArena implements RealtimeArena {
     for (const l of [...this.listeners]) l(outcome);
   }
 
+  private infoAt = 0;
+  /** Cash arena: the numbers of the arena and a tip that changes every 7 s, refreshed twice a second at most. */
+  private cashInfo(ci?: { in: number; n: number; house: number; paid: number; outs: number; kills: number; cut: number; left: number }) {
+    const el = this.host?.querySelector<HTMLElement>("[data-cash-info]");
+    const s = this.deps.strings;
+    if (!el) return;
+    if (!ci || !s.cashInfoLines) { el.hidden = true; return; }
+    const now = performance.now();
+    if (now - this.infoAt < 500) return;
+    this.infoAt = now;
+    const sol = (l: number) => (l / 1e9).toFixed(9);
+    const pool = (this.solNow?.free ?? 0) + (this.solNow?.held ?? 0);
+    const vals: Record<string, string> = { n: String(ci.n), in: sol(ci.in), pool: sol(pool), house: sol(ci.house), cut: sol(ci.cut), outs: String(ci.outs), paid: sol(ci.paid), kills: String(ci.kills), left: String(ci.left) };
+    const fill = (t: string) => t.replace(/\{(\w+)\}/g, (_, k) => vals[k] ?? "");
+    const tips = s.cashTips ?? [];
+    const tip = tips.length ? tips[Math.floor(now / 7000) % tips.length] : "";
+    el.replaceChildren();
+    const b = document.createElement("b"); b.textContent = s.cashInfoTitle ?? ""; el.append(b);
+    for (const t of s.cashInfoLines) { const d = document.createElement("div"); d.textContent = fill(t); el.append(d); }
+    if (tip) { const d = document.createElement("div"); d.className = "tip"; d.textContent = tip; el.append(d); }
+    el.hidden = false;
+  }
+
   /** A short kill feed on the canvas: the last few lines, each fades after a few seconds. */
   private feedLine(text: string, mine: boolean) {
     const list = this.host?.querySelector<HTMLElement>("[data-feed]");
@@ -636,6 +806,34 @@ export class OrbRushArena implements RealtimeArena {
     list.append(li);
     while (list.children.length > 4) list.firstElementChild?.remove();
     setTimeout(() => li.remove(), 7000);
+  }
+
+  /** The card after a cash out: never "eliminated". While the payout is on its way it says so; then the amount, the multiple and
+   *  the payout on Solscan. Stopped halfway, it says what reached the wallet and that the rest fell on the map. */
+  private setCashOverlay(m: { bag: number; entry: number; sig?: string; by?: string } | null, stopped: boolean) {
+    const el = this.host?.querySelector<HTMLElement>("[data-dead]");
+    if (!el) return;
+    el.hidden = false;
+    const s = this.deps.strings;
+    const t = el.querySelector<HTMLElement>("[data-dead-title]");
+    const x = el.querySelector<HTMLElement>("[data-dead-text]");
+    const k = el.querySelector<HTMLElement>("[data-dead-by]");
+    if (t) t.textContent = (stopped ? s.cashOutStopped : s.cashOutTitle) ?? "";
+    if (!m) { if (x) x.textContent = s.cashOutSending ?? ""; if (k) k.textContent = ""; return; }
+    const bag = (m.bag / 1e9).toFixed(9), mult = m.entry ? (m.bag / m.entry).toFixed(2) : "0";
+    const name = m.by ? (this.buf.latest?.players.find((p) => p.w === m.by)?.n ?? `${m.by.slice(0, 4)}..${m.by.slice(-4)}`) : "";
+    if (x) x.textContent = (stopped ? s.cashOutStoppedText ?? "" : s.cashOutText ?? "").replace("{bag}", bag).replace("{x}", mult).replace("{name}", name);
+    if (k) {
+      k.textContent = "";
+      if (m.sig) {
+        const a = document.createElement("a");
+        a.href = `https://solscan.io/tx/${m.sig}${CLUSTER_QS}`;
+        a.target = "_blank"; a.rel = "noopener";
+        a.className = "link-btn";
+        a.textContent = `${s.solscan ?? "Solscan"} · ${m.sig.slice(0, 8)}…`;
+        k.append(a);
+      }
+    }
   }
 
   private setDeadOverlay(info: { rank: number; why: string } | null) {
@@ -727,6 +925,7 @@ export class OrbRushArena implements RealtimeArena {
       if (this.status !== "running" || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       const k = keyName(e);
       if (steering.has(k)) { this.keys.add(k); e.preventDefault(); }
+      else if ((k === "1" || k === "2" || k === "3" || k === "4" || k === "5") && this.host?.querySelector(`[data-trap="${k}"]`)) { this.setTrap(Number(k) as TrapK); e.preventDefault(); }
       else if (k === " " || k === "shift") {
         if (!this.boostKey) this.deps.sound?.play("boost");
         this.boostKey = true;
@@ -799,6 +998,50 @@ export class OrbRushArena implements RealtimeArena {
     if (reportBtn) on<MouseEvent>(reportBtn, "click", () => void this.copyReport());
     const diagBtn = this.host?.querySelector<HTMLElement>("[data-diag-toggle]");
     if (diagBtn) on<MouseEvent>(diagBtn, "click", () => this.setDiag(!this.showDiag));
+
+    // Trap buttons, and what the server answers: the backpack left, or why a trap was refused (shown over the head).
+    const trapBox = this.host?.querySelector<HTMLElement>("[data-traps]");
+    for (const b of Array.from(this.host?.querySelectorAll<HTMLElement>("[data-trap]") ?? [])) {
+      on<PointerEvent>(b, "pointerdown", (e) => { e.preventDefault(); this.setTrap(Number(b.dataset.trap) as TrapK); });
+    }
+    const link = this.deps.client;
+    if (trapBox && link.on) {
+      const leftEl = trapBox.querySelector<HTMLElement>("[data-trap-left]");
+      const off = link.on("message", (m) => {
+        if (m.t === "trapOk" && leftEl && m.left && m.left !== "0") leftEl.textContent = (trapBox.dataset.left ?? "").replace("{n}", (Number(m.left) / 1e9).toFixed(4));
+        if (m.t === "varClip" && m.id) {
+          // The server recorded your clip: it goes to your history, and the VAR button opens it (checked, on the matches page).
+          try {
+            const key = "goshi-var-history";
+            const list = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown[];
+            list.unshift({ id: m.id, kind: m.kind, bag: m.bag, at: m.at, hash: m.hash });
+            localStorage.setItem(key, JSON.stringify(list.slice(0, 50)));
+          } catch { /* private mode */ }
+          const vb = this.host?.querySelector<HTMLAnchorElement>("[data-var-button]");
+          if (vb) { vb.href = `${vb.dataset.varHref ?? "/"}?var=${encodeURIComponent(m.id)}#var-board`; vb.hidden = false; }
+        }
+        if (m.t === "cashEntry") {
+          const s2 = this.deps.strings;
+          const me = this.buf.latest?.players.find((p) => p.w === this.you);
+          // The ticket bought its place (or was already used): this browser forgets it.
+          if ((m.ok || m.why === "used") && m.sig) window.dispatchEvent(new CustomEvent("goshi-ticket-used", { detail: { sig: m.sig } }));
+          const text = m.ok ? (s2.cashEntryOk ?? "").replace("{n}", ((m.lamports ?? 0) / 1e9).toFixed(9)) : m.why === "sign_in" ? s2.cashSignIn ?? "" : (s2.cashEntryBad ?? "").replace("{why}", m.why ?? "");
+          if (text) { this.deps.announce(text); this.floaters.push({ x: me?.head[0] ?? this.cam.x, y: me?.head[1] ?? this.cam.y, text, age: -2 }); }
+        }
+        if (m.t === "cashedOut" && this.deps.strings.cashedOut && m.bag !== undefined) {
+          const me = this.buf.latest?.players.find((p) => p.w === this.you);
+          const text = this.deps.strings.cashedOut.replace("{bag}", (m.bag / 1e9).toFixed(9)).replace("{x}", m.entry ? (m.bag / m.entry).toFixed(1) : "0") + (m.sig ? ` · tx ${m.sig.slice(0, 8)}…` : "");
+          this.floaters.push({ x: me?.head[0] ?? this.cam.x, y: me?.head[1] ?? this.cam.y, text, age: -2 });
+          this.setCashOverlay({ bag: m.bag, entry: m.entry ?? 0, sig: m.sig, by: m.by }, m.full === false);
+        }
+        if (m.t === "trapNo") {
+          const me = this.buf.latest?.players.find((p) => p.w === this.you);
+          const text = m.reason === "no_backpack" ? trapBox.dataset.noBackpack : m.reason === "too_soon" ? trapBox.dataset.tooSoon : m.reason === "not_now" ? trapBox.dataset.notNow ?? "" : "";
+          if (me && text) this.floaters.push({ x: me.head[0], y: me.head[1], text, age: 0 });
+        }
+      });
+      this.cleanups.push(off);
+    }
 
     for (const boostBtn of Array.from(this.host?.querySelectorAll<HTMLElement>("[data-boost-button]") ?? [])) {
       const set = (v: boolean) => { this.boostButton = v; boostBtn.setAttribute("aria-pressed", String(v)); };
@@ -927,7 +1170,7 @@ export class OrbRushArena implements RealtimeArena {
     this.frameGap = this.lastFrameAt ? now - this.lastFrameAt : 0;
     this.lastFrameAt = now;
     this.adaptQuality(now);
-    const scene = this.buf.sampleLive(now, this.deps.client.rttMs);
+    const scene = this.buf.sampleLive(now, this.deps.client.rttMs, this.clock.delay());
     const players = scene ? this.withPredictedSelf(scene.players, now, dt) : EMPTY_PLAYERS;
     const zone = scene?.zone ?? { cx: this.zoneStart.cx, cy: this.zoneStart.cy, r: this.zoneStart.r0 };
     let me: PlayerSnap | null = null;
@@ -952,22 +1195,24 @@ export class OrbRushArena implements RealtimeArena {
         : null);
       if (v) {
         const sp = (this.span || viewSpan(20)) * 0.9;
-        this.cam.x = Math.max(0, Math.min(this.world.w, this.cam.x + v.dx * sp * dt));
-        this.cam.y = Math.max(0, Math.min(this.world.h, this.cam.y + v.dy * sp * dt));
+        const ox = this.world.x0 ?? 0, oy = this.world.y0 ?? 0;
+        this.cam.x = Math.max(ox, Math.min(ox + this.world.w, this.cam.x + v.dx * sp * dt));
+        this.cam.y = Math.max(oy, Math.min(oy + this.world.h, this.cam.y + v.dy * sp * dt));
       }
       this.camSet = true;
     }
     const fullMap = !meAlive && this.specMap && !this.specFree;
     if (fullMap) {
       // The whole arena, centered: nothing is followed, everybody can be seen at once.
-      this.cam.x = this.world.w / 2;
-      this.cam.y = this.world.h / 2;
+      this.cam.x = (this.world.x0 ?? 0) + this.world.w / 2;
+      this.cam.y = (this.world.y0 ?? 0) + this.world.h / 2;
       this.camSet = true;
     }
     const wantSpan = fullMap ? Math.max(this.world.w, this.world.h) * 1.04 : viewSpan(target?.m ?? 20, this.matchMs > SURVIVAL_MS ? SURVIVAL_SPAN : undefined);
     if (!this.span || this.reduced) this.span = wantSpan;
     else this.span += (wantSpan - this.span) * smoothingFactor(dt, 0.6);
-    const scale = Math.min(W, H) / this.span;
+    // A small screen (a phone) sees a little more of the arena, so the bodies are not drawn huge.
+    const scale = (Math.min(W, H) / this.span) * (Math.min(W, H) / dpr < 500 ? 0.8 : 1);
     if (target && !fullMap) {
       const [hx, hy] = target.head;
       if (this.reduced || meAlive || !this.camSet) { this.cam.x = hx; this.cam.y = hy; }
@@ -983,12 +1228,169 @@ export class OrbRushArena implements RealtimeArena {
     const s = this.deps.strings;
     this.paintStrings ??= { you: s.you, protectedHint: s.protectedHint, backToZone: s.backToZone, countdown: s.countdown, finalZone: s.finalZone, nextZone: s.nextZone, nitro: s.nitro, mass: s.mass };
     this.painter.frame({
-      g, W, H, dpr, now, players, zone, orbs: this.orbs, world: this.world, you: this.you, cam: this.cam, scale, shake,
+      g, W, H, dpr, ui: dpr * uiScale(W / dpr, H / dpr), traps: this.traps, massUsd: this.matchMs > SURVIVAL_MS, pingMs: this.deps.client.rttKnown ? this.deps.client.rttMs : undefined, now, players, zone, orbs: this.orbs, world: this.world, you: this.you, cam: this.cam, scale, shake,
       meAlive, myMass: this.myMass, boosting, protectLeft: protectionSecondsLeft(this.matchMs, this.timeLeftMs),
       hasState: this.buf.latest !== null, reduced: this.reduced,
       strings: this.paintStrings,
       floaters: this.floaters,
     });
+    // A room paid by bag: what your coins are worth right now, gold at the top of the board.
+    const meRaw = this.buf.latest?.players.find((p) => p.w === this.you);
+    if (meRaw && meRaw.en && meRaw.alive && s.cashLine && s.cashReady) {
+      // Cash arena: the bag, its multiple of the entry (like the x of a trade) and the eliminations still needed to cash out.
+      const ui = dpr * uiScale(W / dpr, H / dpr);
+      const bag = meRaw.bag ?? 0, k = meRaw.qk ?? 0;
+      const tpl = k >= 3 ? s.cashReady : s.cashLine;
+      const text = tpl.replace("{bag}", (bag / 1e9).toFixed(9)).replace("{x}", (bag / meRaw.en).toFixed(2)).replace("{entry}", (meRaw.en / 1e9).toFixed(9).replace(/0+$/, "")).replace("{k}", String(k)).replace("{left}", String(Math.max(0, 3 - k))).replace("{max}", (Math.min(bag, meRaw.en * (1 + k)) / 1e9).toFixed(9).replace(/0+$/, "")).replace("{mx}", String(1 + k));
+      g.save();
+      g.font = `700 ${Math.round(18 * ui)}px system-ui, sans-serif`;
+      g.textAlign = "center"; g.textBaseline = "top"; g.lineWidth = 4 * ui; g.strokeStyle = "rgba(0,0,0,0.7)";
+      g.fillStyle = k >= 3 ? "#7dffb0" : "#ffd34d";
+      g.strokeText(text, W / 2, 46 * ui); g.fillText(text, W / 2, 46 * ui);
+      g.restore();
+    } else if (this.myBag !== null && s.bagLine) {
+      const ui = dpr * uiScale(W / dpr, H / dpr);
+      g.save();
+      g.font = `700 ${Math.round(18 * ui)}px system-ui, sans-serif`;
+      g.textAlign = "center";
+      g.textBaseline = "top";
+      g.lineWidth = 4 * ui;
+      g.strokeStyle = "rgba(0,0,0,0.7)";
+      g.fillStyle = "#ffd34d";
+      const text = s.bagLine.replace("{n}", (this.myBag / 1e9).toFixed(9));
+      g.strokeText(text, W / 2, 46 * ui);
+      g.fillText(text, W / 2, 46 * ui);
+      g.restore();
+    }
+    this.drawBoss(g, players, W, H, dpr, scale);
+  }
+
+  /** Rules 6: the boss's exposed back (red while it can be bitten, gold while announced), its shield, the boss line and your cash out. */
+  private drawBoss(g: CanvasRenderingContext2D, players: readonly PlayerSnap[], W: number, H: number, dpr: number, scale: number) {
+    const s = this.deps.strings;
+    const ui = dpr * uiScale(W / dpr, H / dpr);
+    const toS = (x: number, y: number): [number, number] => [(x - this.cam.x) * scale + W / 2, (y - this.cam.y) * scale + H / 2];
+    const latest = this.buf.latest?.players;
+    const line = (text: string, y: number, color: string) => {
+      g.font = `700 ${Math.round(17 * ui)}px system-ui, sans-serif`;
+      g.textAlign = "center"; g.textBaseline = "top"; g.lineWidth = 4 * ui; g.strokeStyle = "rgba(0,0,0,0.75)"; g.fillStyle = color;
+      g.strokeText(text, W / 2, y); g.fillText(text, W / 2, y);
+    };
+    g.save();
+    const bi = this.bossInfo;
+    const b = bi ? players.find((p) => p.w === bi.w && p.alive) : undefined;
+    if (bi && b) {
+      if (bi.st !== "calm" && b.body.length > 3) {
+        g.lineCap = "round"; g.lineJoin = "round";
+        g.strokeStyle = bi.st === "open" ? "rgba(255,70,70,0.55)" : "rgba(255,211,77,0.35)";
+        g.lineWidth = Math.max(4, b.r * 2.4 * scale);
+        g.beginPath();
+        b.body.slice(Math.floor(b.body.length * 0.75)).forEach((q, i) => { const [x, y] = toS(q[0], q[1]); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+        g.stroke();
+      }
+      if (latest?.find((p) => p.w === bi.w)?.sh) {
+        const [x, y] = toS(b.head[0], b.head[1]);
+        g.strokeStyle = "rgba(120,200,255,0.9)"; g.lineWidth = 4 * dpr;
+        g.beginPath(); g.arc(x, y, Math.max(20, b.r * scale * 3), 0, Math.PI * 2); g.stroke();
+      }
+      const tpl = bi.st === "open" ? s.bossOpen : bi.st === "warn" ? s.bossWarn : s.bossCalm;
+      if (tpl) line(tpl.replace("{name}", b.n).replace("{n}", String(bi.in)), 76 * ui, bi.st === "open" ? "#ff6b6b" : bi.st === "warn" ? "#ffd34d" : "#ffffff");
+      // While the tail is exposed, a big call in the middle of the screen, so nobody misses the moment to attack.
+      if (bi.st === "open" && s.bossAttack) {
+        const pulse = 1 + 0.08 * Math.sin(performance.now() / 120);
+        g.font = `900 ${Math.round(30 * ui * pulse)}px system-ui, sans-serif`;
+        g.textAlign = "center"; g.textBaseline = "middle"; g.lineWidth = 6 * ui; g.strokeStyle = "rgba(0,0,0,0.8)"; g.fillStyle = "#ff4a4a";
+        g.strokeText(s.bossAttack, W / 2, H * 0.3); g.fillText(s.bossAttack, W / 2, H * 0.3);
+      }
+    }
+    // Near a big orb you cannot eat yet: say what it takes, once you are close enough to try.
+    const meNow = players.find((p) => p.w === this.you && p.alive);
+    if (meNow && s.bigOrbNeed) {
+      for (const o of this.orbs.values()) {
+        if (!o.t || meNow.m >= BIG_ORB_MASS[o.t]) continue;
+        if (Math.hypot(o.x - meNow.head[0], o.y - meNow.head[1]) < meNow.r * 2.5 + 80) { line(s.bigOrbNeed.replace("{n}", String(BIG_ORB_MASS[o.t])), 160 * ui, "#ff8a8a"); break; }
+      }
+    }
+    // On a phone the SOL split line is left out (the bags are on the board): the top of the screen stays clear.
+    if (this.solNow && s.solSplit && W / dpr >= 560) line(s.solSplit.replace("{free}", (this.solNow.free / 1e9).toFixed(9)).replace("{held}", (this.solNow.held / 1e9).toFixed(9)), 20 * ui, "#b6f7d2");
+    if (this.freezeLeft > 0 && s.final3Freeze) line(s.final3Freeze.replace("{n}", String(this.freezeLeft)), 132 * ui, "#7dffb0");
+    const me = latest?.find((p) => p.w === this.you);
+    // Boosting in the cash arena: the SOL it is costing, piling up over the head until the boost stops and it explodes.
+    if (me && me.alive && me.bs) {
+      const mineB = players.find((p) => p.w === this.you);
+      if (mineB) {
+        const [x, y] = toS(mineB.head[0], mineB.head[1]);
+        g.font = `800 ${Math.round(16 * ui)}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "bottom";
+        g.lineWidth = 4 * ui; g.strokeStyle = "rgba(0,0,0,0.8)"; g.fillStyle = "#ff6b6b";
+        const tx = `-${(me.bs / 1e9).toFixed(9)} SOL`;
+        g.strokeText(tx, x, y - mineB.r * scale * 2.6 - 6 * ui); g.fillText(tx, x, y - mineB.r * scale * 2.6 - 6 * ui);
+      }
+    }
+    // Danger: your head about to touch another body (it would be your end) turns red, so a crash never comes as a surprise.
+    if (me && me.alive) {
+      const mine = players.find((p) => p.w === this.you);
+      if (mine) {
+        let worst = Infinity;
+        for (const o of players) {
+          if (o.w === this.you || !o.alive) continue;
+          const lim = mine.r + o.r;
+          for (const q of [o.head, ...o.body]) {
+            const d = Math.hypot(q[0] - mine.head[0], q[1] - mine.head[1]) - lim;
+            if (d < worst) worst = d;
+          }
+        }
+        // Closer than about two head widths: red, stronger the closer it is.
+        const near = Math.max(0, Math.min(1, 1 - worst / (mine.r * 4)));
+        if (near > 0) {
+          const [x, y] = toS(mine.head[0], mine.head[1]);
+          const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 70);
+          g.strokeStyle = `rgba(255,40,40,${(0.35 + 0.65 * near) * pulse})`;
+          g.lineWidth = (3 + 5 * near) * dpr;
+          g.beginPath(); g.arc(x, y, Math.max(18 * dpr, mine.r * scale * 1.9), 0, Math.PI * 2); g.stroke();
+          g.fillStyle = `rgba(255,30,30,${0.18 * near * pulse})`;
+          g.fill();
+        }
+      }
+    }
+    if (me && me.alive && me.co !== undefined && s.cashingOut) {
+      const mine = players.find((p) => p.w === this.you);
+      if (mine) {
+        const [x, y] = toS(mine.head[0], mine.head[1]);
+        g.strokeStyle = "#ffd34d"; g.lineWidth = 5 * dpr;
+        g.beginPath(); g.arc(x, y, Math.max(24, mine.r * scale * 2.6), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, me.co / 5)); g.stroke();
+      }
+      line(s.cashingOut.replace("{n}", String(Math.max(0, Math.ceil(5 - me.co)))), 104 * ui, "#ffd34d");
+      // Cash arena: the SOL leaves the body and flies into the wallet at the top, which counts up as it arrives.
+      if (me.en && mine) {
+        const k = Math.min(1, me.co / 5);
+        const coin = this.painter.solCoin();
+        const wx = W / 2, wy = 150 * ui;
+        const pts = [mine.head, ...mine.body];
+        for (let i = 0; i < 14; i++) {
+          const t = (me.co * 0.9 + i / 14) % 1;
+          const q = pts[Math.floor((i / 14) * pts.length)] ?? mine.head;
+          const [sx, sy] = toS(q[0], q[1]);
+          const x = sx + (wx - sx) * t, y = sy + (wy - sy) * t - Math.sin(t * Math.PI) * 80 * ui;
+          const size = 26 * ui * (1 - t * 0.4);
+          g.drawImage(coin, x - size, y - size, size * 2, size * 2);
+        }
+        g.fillStyle = "rgba(10,12,30,0.85)"; g.strokeStyle = "#7dffb0"; g.lineWidth = 2 * ui;
+        g.beginPath(); g.roundRect(wx - 110 * ui, wy - 22 * ui, 220 * ui, 44 * ui, 12 * ui); g.fill(); g.stroke();
+        line((s.cashToWallet ?? "{n} SOL").replace("{n}", ((me.cb ?? (me.bag ?? 0) * k) / 1e9).toFixed(9)), wy - 11 * ui, "#7dffb0");
+      }
+    }
+    // Cash arena: anybody cashing out is shown to everybody else, with a pulsing ring: stop them and their bag falls on the map.
+    if (me?.en !== undefined || this.solNow) {
+      const others = players.filter((p) => p.alive && p.w !== this.you && p.co !== undefined);
+      for (const o of others) {
+        const [x, y] = toS(o.head[0], o.head[1]);
+        const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 120);
+        g.strokeStyle = `rgba(255,211,77,${0.5 + 0.5 * pulse})`; g.lineWidth = 4 * dpr;
+        g.beginPath(); g.arc(x, y, Math.max(26, o.r * scale * (2.4 + pulse * 0.6)), 0, Math.PI * 2); g.stroke();
+      }
+      if (others.length && s.cashOtherWarn) line(s.cashOtherWarn.replace("{name}", others.map((o) => o.n).join(", ")), 186 * ui, "#ffd34d");
+    }
+    g.restore();
   }
 
   /** Effects that depend on the scene: the boost trail, and stepping the pools. */
@@ -1016,10 +1418,28 @@ export class OrbRushArena implements RealtimeArena {
    * Replaces the local player in the scene by its predicted self: the latest snapshot moved ahead by the time since it
    * arrived plus half the round trip, turning at once toward the pointer, and corrected smoothly toward the server.
    */
+  /** Traps on the map, from the latest snapshot. */
+  private traps: readonly TrapSnap[] = NO_TRAPS;
+  private readonly seenTraps = new Set<string>();
+  private readonly shieldUp = new Set<string>();
+  private lastTrapAt = 0;
+  /** Sets a trap behind the tail (keys 1 and 2, or the trap buttons). The server says no when the backpack is short. */
+  setTrap(kind: TrapK): void {
+    if (this.status !== "running" || this.dead || !this.deps.client.trap) return;
+    const now = performance.now();
+    if (now - this.lastTrapAt < 400) return;
+    this.lastTrapAt = now;
+    if (this.deps.client.trap(kind)) this.deps.sound?.play("boost");
+  }
+
+  /** CEO mode (key "ñ"): the server steers this body, the pointer is ignored. */
+  autopilot = false;
+
   private withPredictedSelf(players: PlayerSnap[], now: number, dt: number): PlayerSnap[] {
     const latest = this.buf.latest;
     const snapMe = latest?.players.find((p) => p.w === this.you);
-    if (!latest || !snapMe || !snapMe.alive) {
+    // CEO mode: the server plays the body, so the pointer is not predicted and the body is drawn as the server sends it.
+    if (!latest || !snapMe || !snapMe.alive || this.autopilot) {
       this.local = null;
       return players;
     }

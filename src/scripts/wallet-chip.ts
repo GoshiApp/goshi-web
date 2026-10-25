@@ -52,6 +52,9 @@ if (root) {
     }
     // Disconnected: on the play page jump to the connect buttons, anywhere else go to the play page.
     const wallet = document.getElementById("play-wallet");
+    // The test site keeps the wallet behind "Advanced options": open it first, or the scroll lands on nothing.
+    const adv = document.getElementById("play-advanced") as HTMLDetailsElement | null;
+    if (adv && !adv.open) adv.open = true;
     if (wallet) {
       wallet.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
       const target = document.querySelector<HTMLElement>("#play-wallet-choose:not([hidden]) [data-connect], #play-wallet-mobile:not([hidden]) a");

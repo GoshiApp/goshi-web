@@ -15,6 +15,12 @@ const playBlock = isTestTarget
   : site.slice(site.indexOf("const playMain: PlayConfig"), site.indexOf("const playTest: PlayConfig"));
 const enabled = process.env.PUBLIC_PLAY_LOCAL === "1" || /\benabled:\s*true\b/.test(playBlock);
 
+// Workbench pages (the skin lab) are for the dev server only: they never ship in a built site.
+for (const dev of ["skin-lab", "match-cine"]) {
+  const dir = join(dist, dev);
+  if (existsSync(dir)) { rmSync(dir, { recursive: true, force: true }); console.log(`prune-play: left out the workbench page /${dev}/`); }
+}
+
 if (enabled) {
   console.log("prune-play: the games are enabled, nothing to prune.");
   process.exit(0);

@@ -2,11 +2,14 @@
 // Pure helpers: types, encode, decode with validation, the auth message, base58, input limits and reconnect backoff.
 // Money values are strings of base units (6 decimals). Wallets are base58 public keys.
 
-export interface WorldSize { w: number; h: number }
+/** The map: its size, and in survival (where the map follows the leader) where its square starts. */
+export interface WorldSize { w: number; h: number; x0?: number; y0?: number }
 export type Role = "paid" | "saboteur";
 export type Mode = "royale" | "vs" | "duel";
 
-export interface Orb { id: number; x: number; y: number; v: number }
+/** An orb. In survival it is a coin of the market: `c` the coin (BTC, ETH, DOGE...) and `q` how much of it. */
+/** An orb. `t`: a big orb of the live arena that only a body of a given mass can eat (1: mass 1500, 2: mass 10000). */
+export interface Orb { id: number; x: number; y: number; v: number; c?: string; q?: number; t?: number }
 export interface ZoneStart { cx: number; cy: number; r0: number; rMin: number; /** The radius of each phase (start circle, then five). */ radii?: number[] }
 export interface ZoneCircle { cx: number; cy: number; r: number }
 export type ZoneState = "calm" | "warn" | "shrink" | "hold";
@@ -16,6 +19,10 @@ export type ZoneState = "calm" | "warn" | "shrink" | "hold";
  * (`warn`) or being moved to (`shrink`). Older servers send only the circle.
  */
 export interface ZoneNow extends ZoneCircle { target?: ZoneCircle; phase?: number; state?: ZoneState; inMs?: number }
+/** Traps (1 laser, 2 puddle) and the powers of rules 6 (3 kamikaze, 4 shield of the boss, 5 cash out). */
+export type TrapK = 1 | 2 | 3 | 4 | 5;
+const isTrapK = (v: unknown): v is TrapK => v === 1 || v === 2 || v === 3 || v === 4 || v === 5;
+
 export interface PlayerSnap {
   w: string;
   n: string;
@@ -30,6 +37,18 @@ export interface PlayerSnap {
   h: number;
   /** Mass. */
   m: number;
+  /** Contract v7 (test network): the lamports of the coins this body carries. */
+  bag?: number;
+  /** Cash arena: SOL the current boost has taken from the bag so far (lamports); it explodes when the boost stops. */
+  bs?: number;
+  /** Cash arena (test): the entry of this body in lamports, and how many players with at least that entry it eliminated. */
+  en?: number;
+  qk?: number;
+  /** Rules 6: seconds this body has been cashing out, and whether its shield is up. */
+  co?: number;
+  /** Cash arena: lamports already sent to the wallet during this cash out. */
+  cb?: number;
+  sh?: number;
   /** Body radius. */
   r: number;
   head: [number, number];
@@ -106,11 +125,15 @@ export type ClientMsg =
   | { t: "fillWithBots"; roomId: string; paid: number; free: number }
   | { t: "faucet" }
   /** The live arena: watch it, take a place (or wait for one), leave. */
-  | { t: "live_watch" }
-  | { t: "live_join"; name?: string; wallet?: string; skin?: string }
+  | { t: "live_watch"; arena?: string }
+  | { t: "live_join"; arena?: string; name?: string; wallet?: string; skin?: string; entrySig?: string }
   | { t: "live_leave" }
   /** The computer plays this body as an elite bot while the person is away (on), or hands it back (off). */
   | { t: "afk"; on: boolean }
+  /** Sets a trap behind the tail: 1 a laser, 2 a slowing puddle. */
+  | { t: "trap"; kind: TrapK }
+  /** Live arena: the signature of a payment to the house for one more step of length. */
+  | { t: "buyLength"; sig: string }
   | { t: "practice"; name: string; wallet?: string; difficulty?: "easy" | "medium" | "hard" | "insane"; mode?: "survival" | "show" }
   /** The cosmetic skin to wear in paid rooms (a holder skin is checked against the balance). */
   | { t: "skin"; id: string }
@@ -123,6 +146,11 @@ export type ClientMsg =
   | { t: "enter"; roomId: string }
   | { t: "vs"; roomId: string; accept: boolean }
   | { t: "input"; dx: number; dy: number; boost: boolean }
+  /** Guest rooms (devnet/test): free rooms with a short code, no wallet. */
+  | { t: "groom_create"; name: string }
+  | { t: "groom_join"; name: string; code: string }
+  | { t: "groom_start" }
+  | { t: "groom_leave" }
   /** Subscribe to (or leave) the live numbers of the landing page. No wallet needed. */
   | { t: "stats"; on: boolean; /** Counts this page load as one visit (a number only; nothing about the person is stored). */ visit?: boolean }
   | { t: "leave"; roomId: string };
@@ -138,7 +166,7 @@ export type ServerMsg =
   | { t: "pong" }
   /** The skins people wear in the live arena: wallet (or temporary id) -> skin id. */
   | { t: "skins"; map: Record<string, string> }
-  | { t: "live"; state: "watching" | "queued" | "playing" | "dead"; places: number; humans: number; waiting: number; watching: number; you?: string; pos?: number }
+  | { t: "live"; state: "watching" | "queued" | "playing" | "dead"; places: number; humans: number; waiting: number; watching: number; you?: string; pos?: number; cash?: { price: number; vault: string } }
   | { t: "roomCreated"; roomId: string; tx: string }
   | { t: "duelTx"; roomId: string; tx: string; players: number; guests: string[] }
   | { t: "invite"; roomId: string; entryFee: string; host: string; players: number }
@@ -153,7 +181,11 @@ export type ServerMsg =
   | { t: "quickRoom"; roomId: string; created: boolean; paid: number; tx?: string }
   | { t: "botsJoining"; roomId: string; paid: number; free: number }
   | { t: "faucet"; sol: string; goshi: string; tx: string }
-  | { t: "entered"; roomId: string; role: Role; practice?: boolean }
+  | { t: "entered"; roomId: string; role: Role; practice?: boolean; guest?: boolean }
+  /** Guest room lobby: the joiner gets the same message on create and on join. */
+  | { t: "groom_created"; code: string; players: { n: string; host: boolean }[]; max: number }
+  /** Guest room lobby changed: somebody joined, left, or the host moved. */
+  | { t: "groom_update"; players: { n: string; host: boolean }[] }
   | { t: "lobby"; roomId: string; state: "waiting" | "active"; mode: Mode; entryFee: string; paid: string[]; free: string[]; waitedMs: number }
   | { t: "vsOffer"; roomId: string; paid: number; expiresInMs: number }
   | { t: "vsStarted"; roomId: string }
@@ -170,7 +202,32 @@ export type ServerMsg =
       eatenOrbs: number[]; newOrbs: Orb[]; events: DeathEvent[];
       /** Survival: seconds to the next airdrop, and the spot where one has just landed. */
       dropIn?: number; drop?: { x: number; y: number };
+      /** Rules 6: the boss and where its cycle is (calm, warn: it will be exposed, open: its back can be bitten). */
+      boss?: { w: string; st: "calm" | "warn" | "open"; in: number };
+      /** Rules 7: seconds the zone still holds still for the last three. */
+      freeze?: number;
+      /** Cash arena: boosts that just ended; their SOL exploded from the head (x, y) into the coins `ids`. */
+      pops?: { w: string; x: number; y: number; ids: number[] }[];
+      /** Rooms with money: the SOL free on the map and the SOL in the bags of the players alive (lamports). */
+      sol?: { free: number; held: number };
+      /** Cash arena: SOL coins that just fused, [from x, from y, into x, into y]. */
+      fuses?: [number, number, number, number][];
+      /** Every few seconds: the ids of every coin that exists (anything else on screen is dropped). */
+      orbIds?: number[];
+      /** Cash arena tallies (lamports and counts) for the info panel. */
+      cashInfo?: { in: number; n: number; house: number; paid: number; outs: number; kills: number; cut: number; left: number };
+      /** Traps on the map (rules 3). */
+      traps?: TrapSnap[];
+      /** Survival: the map follows the leader, so its square comes with every snapshot. */
+      world?: WorldSize;
     }
+  | { t: "trapOk"; kind: TrapK; left: string }
+  | { t: "cashedOut"; bag: number; entry: number; sig?: string; full?: boolean; by?: string }
+  | { t: "cashEntry"; ok: boolean; lamports?: number; why?: string; sig: string }
+  | { t: "varClip"; id: string; kind: string; bag: number; at: number; hash: string }
+  | { t: "lengthOk"; bonus: number }
+  | { t: "lengthNo"; reason: string }
+  | { t: "trapNo"; kind: TrapK; reason: string }
   | { t: "end"; roomId: string; mode: Mode; ranking: RankEntry[]; payout: EndPayout; tx: string | null; error: string | null; practice?: boolean; prize?: { lamports: string; tx: string }; proof?: EndProof; record?: { hash: string; bytes: number; entries: number } }
   | { t: "error"; code: string; message: string };
 
@@ -307,6 +364,11 @@ const isEndPayout = (v: unknown): v is EndPayout =>
   isObj(v.jackpot) && typeof v.jackpot.triggered === "boolean" && isUint(v.jackpot.amount) && (v.jackpot.winner === null || isStr(v.jackpot.winner));
 
 /** Parses one text frame. Returns null for anything that is not a well formed message of the protocol. */
+/** A trap on the map: kind (1 laser, 2 puddle), owner, the beam ends or the puddle center and radius, seconds left. */
+export interface TrapSnap { k: number; o: string; x: number; y: number; x2: number; y2: number; r: number; s: number }
+const isTrap = (t: unknown): t is TrapSnap =>
+  typeof t === "object" && t !== null && ["k", "x", "y", "x2", "y2", "r", "s"].every((k) => typeof (t as Record<string, unknown>)[k] === "number") && typeof (t as Record<string, unknown>).o === "string";
+
 export function decodeServer(raw: unknown): ServerMsg | null {
   if (typeof raw !== "string") return null;
   let v: unknown;
@@ -348,7 +410,7 @@ export function decodeServer(raw: unknown): ServerMsg | null {
     }
     case "live":
       return (v.state === "watching" || v.state === "queued" || v.state === "playing" || v.state === "dead") && isNum(v.places) && isNum(v.humans) && isNum(v.waiting)
-        ? { t: "live", state: v.state, places: v.places, humans: v.humans, waiting: v.waiting, watching: isNum(v.watching) ? v.watching : 0, ...(isStr(v.you) ? { you: v.you } : {}), ...(isNum(v.pos) ? { pos: v.pos } : {}) }
+        ? { t: "live", state: v.state, places: v.places, humans: v.humans, waiting: v.waiting, watching: isNum(v.watching) ? v.watching : 0, ...(isStr(v.you) ? { you: v.you } : {}), ...(isNum(v.pos) ? { pos: v.pos } : {}), ...(isObj(v.cash) && isNum(v.cash.price) && isStr(v.cash.vault) ? { cash: { price: v.cash.price, vault: v.cash.vault } } : {}) }
         : null;
     case "passOffer":
       return isStr(v.roomId) && isNum(v.tierUsd) && isUint(v.entryFee) && isNum(v.rank) && isNum(v.paid) && isNum(v.expiresInMs)
@@ -379,7 +441,25 @@ export function decodeServer(raw: unknown): ServerMsg | null {
     case "faucet":
       return isUint(v.sol) && isUint(v.goshi) && isStr(v.tx) ? { t: "faucet", sol: v.sol, goshi: v.goshi, tx: v.tx } : null;
     case "entered":
-      return isStr(v.roomId) && isRole(v.role) ? { t: "entered", roomId: v.roomId, role: v.role, practice: v.practice === true ? true : undefined } : null;
+      return isStr(v.roomId) && isRole(v.role) ? { t: "entered", roomId: v.roomId, role: v.role, practice: v.practice === true ? true : undefined, guest: v.guest === true ? true : undefined } : null;
+    case "groom_created": {
+      if (!isStr(v.code) || !isNum(v.max) || !Array.isArray(v.players)) return null;
+      const players: { n: string; host: boolean }[] = [];
+      for (const p of v.players) {
+        if (!isObj(p) || !isStr(p.n) || p.n.length > 14) return null;
+        players.push({ n: p.n, host: p.host === true });
+      }
+      return { t: "groom_created", code: v.code, players, max: v.max };
+    }
+    case "groom_update": {
+      if (!Array.isArray(v.players)) return null;
+      const players: { n: string; host: boolean }[] = [];
+      for (const p of v.players) {
+        if (!isObj(p) || !isStr(p.n) || p.n.length > 14) return null;
+        players.push({ n: p.n, host: p.host === true });
+      }
+      return { t: "groom_update", players };
+    }
     case "lobby":
       return isStr(v.roomId) && (v.state === "waiting" || v.state === "active") && isMode(v.mode) && isUint(v.entryFee) && isStrArr(v.paid) && isStrArr(v.free) && isNum(v.waitedMs)
         ? { t: "lobby", roomId: v.roomId, state: v.state, mode: v.mode, entryFee: v.entryFee, paid: v.paid, free: v.free, waitedMs: v.waitedMs }
@@ -454,8 +534,31 @@ export function decodeServer(raw: unknown): ServerMsg | null {
         players: (v.players as PlayerSnap[]).map(withDefaults), eatenOrbs: v.eatenOrbs, newOrbs: v.newOrbs, events: v.events,
         ...(isNum(v.dropIn) ? { dropIn: v.dropIn } : {}),
         ...(isObj(v.drop) && isNum(v.drop.x) && isNum(v.drop.y) ? { drop: { x: v.drop.x, y: v.drop.y } } : {}),
+        ...(Array.isArray(v.traps) && v.traps.every(isTrap) ? { traps: v.traps as TrapSnap[] } : {}),
+        ...(isNum(v.freeze) ? { freeze: v.freeze } : {}),
+        ...(Array.isArray(v.pops) ? { pops: (v.pops as unknown[]).filter((p): p is { w: string; x: number; y: number; ids: number[] } => isObj(p) && isStr(p.w) && isNum(p.x) && isNum(p.y) && Array.isArray(p.ids) && p.ids.every(isNum)) } : {}),
+        ...(isObj(v.sol) && isNum(v.sol.free) && isNum(v.sol.held) ? { sol: { free: v.sol.free, held: v.sol.held } } : {}),
+        ...(Array.isArray(v.fuses) && v.fuses.every((f: unknown) => Array.isArray(f) && f.length === 4 && f.every(isNum)) ? { fuses: v.fuses as [number, number, number, number][] } : {}),
+        ...(Array.isArray(v.orbIds) && v.orbIds.every(isNum) ? { orbIds: v.orbIds as number[] } : {}),
+        ...(isObj(v.cashInfo) && ["in", "n", "house", "paid", "outs", "kills", "cut", "left"].every((k) => isNum((v.cashInfo as Record<string, unknown>)[k])) ? { cashInfo: v.cashInfo as { in: number; n: number; house: number; paid: number; outs: number; kills: number; cut: number; left: number } } : {}),
+        ...(isObj(v.boss) && isStr(v.boss.w) && (v.boss.st === "calm" || v.boss.st === "warn" || v.boss.st === "open") && isNum(v.boss.in) ? { boss: { w: v.boss.w, st: v.boss.st, in: v.boss.in } } : {}),
+        ...(isObj(v.world) && isNum(v.world.w) && isNum(v.world.h) && isNum(v.world.x0) && isNum(v.world.y0) ? { world: { w: v.world.w, h: v.world.h, x0: v.world.x0, y0: v.world.y0 } } : {}),
       };
     }
+    case "lengthOk":
+      return isNum(v.bonus) ? { t: "lengthOk", bonus: v.bonus } : null;
+    case "lengthNo":
+      return isStr(v.reason) ? { t: "lengthNo", reason: v.reason } : null;
+    case "varClip":
+      return isStr(v.id) && isStr(v.kind) && isNum(v.bag) && isNum(v.at) && isStr(v.hash) ? { t: "varClip", id: v.id, kind: v.kind, bag: v.bag, at: v.at, hash: v.hash } : null;
+    case "cashedOut":
+      return isNum(v.bag) && isNum(v.entry) ? { t: "cashedOut", bag: v.bag, entry: v.entry, ...(isStr(v.sig) ? { sig: v.sig } : {}), ...(typeof v.full === "boolean" ? { full: v.full } : {}), ...(isStr(v.by) ? { by: v.by } : {}) } : null;
+    case "cashEntry":
+      return typeof v.ok === "boolean" && isStr(v.sig) ? { t: "cashEntry", ok: v.ok, sig: v.sig, ...(isNum(v.lamports) ? { lamports: v.lamports } : {}), ...(isStr(v.why) ? { why: v.why } : {}) } : null;
+    case "trapOk":
+      return isTrapK(v.kind) && isStr(v.left) ? { t: "trapOk", kind: v.kind, left: v.left } : null;
+    case "trapNo":
+      return isTrapK(v.kind) && isStr(v.reason) ? { t: "trapNo", kind: v.kind, reason: v.reason } : null;
     case "end": {
       if (!isStr(v.roomId) || !isMode(v.mode) || !isEndPayout(v.payout)) return null;
       if (!Array.isArray(v.ranking) || !v.ranking.every((r) => isObj(r) && isStr(r.w) && isNum(r.rank) && isNum(r.score) && isRole(r.role))) return null;

@@ -7,11 +7,12 @@
 // Entry fees are in lamports (1 SOL = 1_000_000_000). Saboteurs do not compete: they share 2% of the pot, paid in SOL.
 
 import { U64_MAX } from "./amounts.ts";
+import { CONTRACT_V6 } from "./contract.ts";
 
 /** VS mode only: rake taken from every entry (percent of the pot). */
-export const RAKE_PCT = 10n;
-/** Royale (contract v3): prizes are 88% of the nominal pot, saboteurs share 2% equally, the house keeps the rest of the cash. */
-export const PRIZE_POOL_PCT = 88n;
+export const RAKE_PCT = CONTRACT_V6 ? 3n : 10n;
+/** Royale (contract v6): prizes are 95% of the cash in the room, saboteurs share 2% equally, the house keeps the rest (3%). */
+export const PRIZE_POOL_PCT = CONTRACT_V6 ? 95n : 88n;
 export const SABOTEUR_POOL_PCT = 2n;
 /** Prize split (percent of the prize pool). The third place is the remainder (15). */
 export const PRIZE_FIRST_PCT = 60n;
@@ -39,7 +40,7 @@ export interface RoyaleSplit {
   saboteurPool: bigint;
   saboteurEach: bigint;
   saboteurTotal: bigint;
-  /** What the house keeps: the cash minus the prizes minus the saboteurs. Exactly 10% of the pot with three saboteurs and no pass seat. */
+  /** What the house keeps: the cash minus the prizes minus the saboteurs. Exactly 3% of the pot with three saboteurs and no pass seat. */
   rake: bigint;
   buybackBurn: bigint;
   infra: bigint;
@@ -81,8 +82,10 @@ function rakeParts(rake: bigint) {
  */
 export function settleRoyale(nominal: bigint, cash: bigint, saboteurs: number): RoyaleSplit | null {
   if (!Number.isInteger(saboteurs) || saboteurs < 0 || saboteurs > MAX_FREE) return null;
-  const prizePool = pct(nominal, PRIZE_POOL_PCT);
-  const sabPool = pct(nominal, SABOTEUR_POOL_PCT);
+  if (nominal < 0n || nominal > U64_MAX) return null;
+  const base = CONTRACT_V6 ? cash : nominal;
+  const prizePool = pct(base, PRIZE_POOL_PCT);
+  const sabPool = pct(base, SABOTEUR_POOL_PCT);
   if (prizePool === null || sabPool === null || cash < 0n || cash > U64_MAX) return null;
   const first = pct(prizePool, PRIZE_FIRST_PCT);
   const second = pct(prizePool, PRIZE_SECOND_PCT);

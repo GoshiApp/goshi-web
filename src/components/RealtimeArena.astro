@@ -3,7 +3,7 @@
 // which loads src/lib/play/orb-rush.ts (an implementation of RealtimeArena, see arena-adapter.ts) only when needed.
 import { copy } from "../content";
 import { site } from "../site";
-import type { Lang } from "../lib/i18n";
+import { path, type Lang } from "../lib/i18n";
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const c = copy[lang].play;
@@ -101,12 +101,27 @@ const l = c.live;
       <div class="game-canvas">
         <button type="button" class="fs-fab" data-fs-toggle data-label-on={l.game.fullscreen} data-label-off={l.game.exitFullscreen} aria-label={l.game.fullscreen} aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <p class="fs-hud" data-fs-hud aria-hidden="true"></p>
+        <p class="room-code" data-room-code hidden></p>
         <button type="button" class="btn btn-glass btn-sm fs-leave" data-practice-leave hidden></button>
+        <a class="btn btn-gold btn-sm var-btn" data-var-button data-var-href={path(lang, "matches")} href={path(lang, "matches")} hidden>{l.arenaState.varButton}</a>
         <div class="joy" data-joy hidden aria-hidden="true"><span class="joy-knob" data-joy-knob></span></div>
+        {(site.traps || site.powers) && <div class="trap-fabs" data-traps data-no-backpack={l.arenaState.trapNoBackpack} data-too-soon={l.arenaState.trapTooSoon} data-not-now={l.arenaState.trapNotNow} data-left={l.arenaState.trapLeft} title={l.arenaState.trapKeys}>
+          {/* No powers in any mode: only the cash out stays. */}
+          {false && <>
+          <button type="button" class="trap-fab trap-laser" data-trap="1" aria-label={l.arenaState.trapLaser}><kbd>1</kbd> {l.arenaState.trapLaser}</button>
+          <button type="button" class="trap-fab trap-slow" data-trap="2" aria-label={l.arenaState.trapSlow}><kbd>2</kbd> {l.arenaState.trapSlow}</button>
+          <button type="button" class="trap-fab trap-kamikaze" data-trap="3" aria-label={l.arenaState.trapKamikaze}><kbd>3</kbd> {l.arenaState.trapKamikaze}</button>
+          <button type="button" class="trap-fab trap-shield" data-trap="4" aria-label={l.arenaState.trapShield}><kbd>4</kbd> {l.arenaState.trapShield}</button>
+          </>}
+          <button type="button" class="trap-fab trap-cashout" data-trap="5" aria-label={l.arenaState.trapCashout}><kbd>5</kbd> {l.arenaState.trapCashout}</button>
+          <span class="trap-left" data-trap-left></span>
+        </div>}
         <button type="button" class="boost-fab touch-only" data-boost-button aria-label={l.game.boost} aria-pressed="false">{l.game.boost}</button>
         <canvas id="play-canvas" tabindex="0" role="img" aria-label={l.game.canvasLabel}></canvas>
         <p class="zone-banner" data-zone-banner hidden role="status"></p>
         <ul class="kill-feed" data-feed aria-hidden="true"></ul>
+        <div class="cash-info" data-cash-info hidden aria-live="off"></div>
+        {site.traps && <p class="pot-live" data-pot-live data-label={l.arenaState.potLive} hidden></p>}
         <div class="game-loading" data-loading hidden role="status" aria-live="polite">
           <p class="game-loading-title" data-loading-title></p>
           <p class="game-loading-count" data-loading-count aria-hidden="true"></p>
@@ -115,6 +130,7 @@ const l = c.live;
         <div class="dead-overlay" data-dead hidden>
           <div class="dead-head" data-dead-drag>
             <h3 data-dead-title></h3>
+            <button type="button" class="btn btn-glass btn-sm dead-exit" data-dead-exit>{l.arenaState.exitMatch}</button>
             <button type="button" class="dead-min" data-dead-min aria-expanded="true" aria-label="-">&minus;</button>
           </div>
           <p data-dead-text></p>

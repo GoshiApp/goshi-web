@@ -10,14 +10,16 @@ import { SKINS, recordGame, selectedSkin } from "../lib/play/skins.ts";
 import { bestStreak, record as recordMission } from "../lib/play/missions.ts";
 import { registerArena } from "../lib/play/arena-adapter.ts";
 import { manager } from "../lib/play/wallet-session.ts";
+import { CONTRACT_V6 } from "../lib/play/contract.ts";
 import { fill, node } from "../lib/play/dom.ts";
 import { ArenaSound } from "../lib/play/arena-sound.ts";
 import { QualityManager, type QualityMode } from "../lib/play/arena-quality.ts";
 import { COLOR_KEY, parseColorChoice } from "../lib/play/goshi-face.ts";
+import { cleanGuestCode, cleanGuestName, makeGuestName } from "../lib/play/guest.ts";
 import { buildSummary, dailyAndShare } from "./result-card.ts";
 import type { PlayCopy } from "../content/types.ts";
 import type { ArenaLink, OrbRushArena } from "../lib/play/orb-rush.ts";
-import type { FrenzyEnd, FrenzySnap, ServerMsg } from "../lib/play/protocol.ts";
+import type { FrenzyEnd, FrenzySnap, ServerMsg, TrapK } from "../lib/play/protocol.ts";
 import type { FrenzyView } from "../lib/play/frenzy-view.ts";
 import type { ServerClient } from "../lib/play/server-client.ts";
 
@@ -34,9 +36,9 @@ export const VS_AFTER_MS = 5 * 60 * 1000;
 const CONNECT_TIMEOUT_MS = 30_000;
 
 interface ShellData {
-  settings: { serverUrl: string; regions?: { id: string; url: string }[]; regionSlot?: number };
+  settings: { serverUrl: string; liveUrl?: string; regions?: { id: string; url: string }[]; regionSlot?: number };
   cluster: string;
-  t: { live: PlayCopy["live"]; practice: PlayCopy["practice"] };
+  t: { live: PlayCopy["live"]; practice: PlayCopy["practice"]; guest?: PlayCopy["guest"] };
 }
 
 /** Everything the waiting room view needs. The page fills it from the `lobby` message and its own state. */
@@ -59,6 +61,8 @@ export interface ArenaShell {
   readonly source: Source | null;
   /** Wires the free practice card (button, name, auto start). Safe to call once per page. */
   bindCard(): void;
+  /** Wires the guest onboarding wizard (test site only). No-op when the wizard is not on the page. */
+  bindGuestWizard?(): void;
   startPractice(): void;
   stopPractice(): void;
   // On-chain room, called by play-live.ts with the wallet's socket.
@@ -111,6 +115,13 @@ function createShell(d: ShellData): ArenaShell {
   let frenzy: FrenzyView | null = null;
   let frenzyQueue: ((v: FrenzyView) => void)[] = [];
   let link: ArenaLink | null = null;
+  const linkListeners = new Set<(m: { t: string; left?: string; reason?: string; bag?: number; entry?: number; id?: string; kind?: string | number; at?: number; hash?: string; ok?: boolean; lamports?: number; why?: string; sig?: string }) => void>();
+  const wired = new WeakSet<object>();
+  /** Makes `c` the connection the arena talks to, and forwards its messages to the arena's listeners once. */
+  function useLink(c: ArenaLink & { on?: (e: "message", f: (m: { t: string }) => void) => unknown }) {
+    link = c;
+    if (!wired.has(c) && c.on) { wired.add(c); c.on("message", (m) => { if (link === c) for (const f of linkListeners) f(m); }); }
+  }
   let queued: (() => void)[] = [];
   let startsAt = 0;
   let loadTimer: ReturnType<typeof setInterval> | null = null;
@@ -242,20 +253,25 @@ function createShell(d: ShellData): ArenaShell {
       for (const b of toggles) b.addEventListener("click", toggle);
       // Leave a practice match at any time, also in full screen: one button on the board itself.
       // AFK, for the team wallet only and with no button for anybody: the key "ñ" gives the body to the elite bot and takes it back.
-      let afkOn = false;
       document.addEventListener("keydown", (e) => {
         if ((e.key !== "ñ" && e.key !== "Ñ") || e.ctrlKey || e.metaKey || e.altKey) return;
         const tag = (e.target as HTMLElement | null)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         if (!ceoSession || !showMode) return;
-        afkOn = !afkOn;
-        (pClient as unknown as { afk?: (on: boolean) => boolean } | null)?.afk?.(afkOn);
+        ceoAfk = !ceoAfk;
+        if (arena) arena.autopilot = ceoAfk;
+        (pClient as unknown as { afk?: (on: boolean) => boolean } | null)?.afk?.(ceoAfk);
       });
       const leaveBtn = q<HTMLButtonElement>("[data-practice-leave]");
       if (leaveBtn) {
         leaveBtn.textContent = $("play-now-leave").textContent ?? "";
         leaveBtn.addEventListener("click", () => { stopPractice(); void leave(); });
       }
+      // Out of the match at any time after losing: back to the page, out of full screen.
+      q<HTMLButtonElement>("[data-dead-exit]")?.addEventListener("click", () => {
+        if (source === "practice") stopPractice(); else clear();
+        void leave();
+      });
 
       // On a phone the game is played sideways, like the other .io games: in portrait a match asks to rotate, in landscape the board
       // takes the whole screen by itself (no gesture is needed for this layout).
@@ -334,7 +350,8 @@ function createShell(d: ShellData): ArenaShell {
       setInterval(() => {
         const on_ = matchOn();
         if (leaveBtn) leaveBtn.hidden = !(on_ && source === "practice" && !pEnded);
-        if (afkOn && (!on_ || arena?.isDead)) afkOn = false;
+        // Out of the match, CEO mode ends; a death in the live arena does not end it (the team body comes back on its own).
+        if (ceoAfk && (!on_ || (arena?.isDead && !(ceoSession && showMode)))) { ceoAfk = false; if (arena) arena.autopilot = false; }
         document.documentElement.classList.toggle("match-lock", on_);
         area.classList.toggle("is-frenzy", !!frenzy);
         if (on_ && !wasOn) { const a = document.activeElement as HTMLElement | null; if (a && a !== document.body && a.tagName !== "INPUT") a.blur(); }
@@ -369,6 +386,10 @@ function createShell(d: ShellData): ArenaShell {
   // The arena talks to whatever socket is current through this object, so one arena serves both ways to play.
   const delegate: ArenaLink = {
     sendInput: (dx, dy, boost) => link?.sendInput(dx, dy, boost) ?? false,
+    // Traps go to whatever connection plays now (practice, live arena, guest room or a room with money).
+    trap: (kind: TrapK) => (link as { trap?: (k: 1 | 2 | 3 | 4 | 5) => boolean } | null)?.trap?.(kind) ?? false,
+    // The arena listens for the answers to its traps; the handlers follow the connection when it changes.
+    on: (_e: "message", f: (m: { t: string; left?: string; reason?: string; bag?: number; entry?: number; id?: string; kind?: string | number; at?: number; hash?: string; ok?: boolean; lamports?: number; why?: string; sig?: string }) => void) => { linkListeners.add(f); return () => linkListeners.delete(f); },
     ping: () => link?.ping() ?? false,
     get rttMs() { return link?.rttMs ?? 0; },
     get rttKnown() { return link?.rttKnown ?? false; },
@@ -387,11 +408,12 @@ function createShell(d: ShellData): ArenaShell {
         strings: {
           you: g.you, startAnnounce: g.startAnnounce, endAnnounce: g.endAnnounce,
           zoneLines: { calm: g.zoneCalm, warn: g.zoneWarn, shrink: g.zoneShrink, hold: g.zoneHold, final: g.finalZone },
-          finalZone: g.finalZone, nextZone: g.nextZone, zoneOutBanner: g.zoneOutBanner, showerIn: g.showerIn, showerLanded: g.showerLanded,
+          finalZone: g.finalZone, nextZone: g.nextZone, zoneOutBanner: g.zoneOutBanner, bagLine: g.bagLine, bossCalm: g.bossCalm, bossWarn: g.bossWarn, bossOpen: g.bossOpen, cashingOut: g.cashingOut, final3Freeze: g.final3Freeze, bigOrbNeed: g.bigOrbNeed, solSplit: g.solSplit, cashOutTitle: g.cashOutTitle, cashOutText: g.cashOutText, cashOutStopped: g.cashOutStopped, cashOutStoppedText: g.cashOutStoppedText, cashOutSending: g.cashOutSending, solscan: g.solscan, cashOtherWarn: g.cashOtherWarn, cashToWallet: g.cashToWallet, cashInfoTitle: g.cashInfoTitle, cashInfoLines: g.cashInfoLines, cashTips: g.cashTips, cashLine: g.cashLine, cashReady: g.cashReady, cashedOut: g.cashedOut, cashEntryOk: g.cashEntryOk, cashEntryBad: g.cashEntryBad, cashSignIn: pc.cashSignIn, bossAttack: g.bossAttack, showerIn: g.showerIn, showerLanded: g.showerLanded,
           countdown: g.countdown, deadTitle: g.deadTitle, deadText: g.deadText,
           death: {
             youBody: g.deathYouBody, youHead: g.deathYouHead, youZone: g.deathYouZone, youWall: g.deathYouWall, onYourBody: g.deathOnYourBody,
             feedBody: g.deathFeedBody, feedHead: g.deathFeedHead, feedZone: g.deathFeedZone, feedWall: g.deathFeedWall,
+            youKamikaze: g.deathYouKamikaze, youCashout: g.deathYouCashout, feedKamikaze: g.deathFeedKamikaze, feedCashout: g.deathFeedCashout,
           },
           nitro: g.nitro, mass: g.mass, reportCopied: g.reportCopied, reportManual: g.reportManual,
           pingValue: g.pingValue, rankValue: g.rankValue, playersValue: g.playersValue, pingWait: g.pingWait, outValue: g.outValue,
@@ -664,13 +686,16 @@ function createShell(d: ShellData): ArenaShell {
       }
     });
   }
-  const practiceServer = (): string => d.settings.serverUrl;
+  // The live (paid) arenas connect to their own server when the site has one; everything else to the chosen region.
+  const practiceServer = (): string => (showMode && d.settings.liveUrl) || d.settings.serverUrl;
   let practiceUrl = d.settings.serverUrl;
 
   // The live arena: always running with 20 places, bots with fixed addresses and room for people (with a queue).
   let showMode = false;
   /** This connection signed in with the team wallet: the only one allowed to use AFK. */
   let ceoSession = false;
+  /** CEO mode (key "ñ") is on: the server plays the team body; it stays on through deaths in the live arena. */
+  let ceoAfk = false;
   let livePanel: HTMLElement | null = null;
   /** Set by the entry button of the page: take a place as soon as the arena is on screen. */
   let autoJoinLive = false;
@@ -680,11 +705,13 @@ function createShell(d: ShellData): ArenaShell {
     showMode = false;
     livePanel?.remove();
     livePanel = null;
-    document.querySelectorAll(".tv-badge, .tv-line").forEach((n) => n.remove());
+    document.querySelectorAll(".tv-badge").forEach((n) => n.remove());
   }
   /** Opens the live arena (a place is taken at once when autoJoin is true). Called from a click: it is what lets the sound play. */
   function enterLiveArena(autoJoin: boolean) {
-    if (showMode && livePanel) { if (autoJoin) liveJoin(); return; }
+    // Always a clean start: whatever was left of a previous arena (its panel, its connection, a death screen) is closed first,
+    // so a second entry never hangs on an old connection or the wrong arena.
+    if (showMode || livePanel) leaveLiveMode();
     autoJoinLive = autoJoin;
     autoJoinLive = autoJoin;
     showMode = true;
@@ -698,40 +725,197 @@ function createShell(d: ShellData): ArenaShell {
     const ll = document.createElement("button"); ll.type = "button"; ll.className = "btn btn-glass btn-sm"; ll.setAttribute("data-live-leave", ""); ll.textContent = pc.liveLeave; ll.hidden = true;
     lj.addEventListener("click", () => liveJoin());
     ll.addEventListener("click", () => { (pClient as unknown as { liveLeave?: () => boolean } | null)?.liveLeave?.(); });
-    livePanel.append(lt, lj, ll);
+    // Bought length: paid with SOL straight to the house (the page with the wallet does the payment), checked by the server.
+    const lb = document.createElement("button"); lb.type = "button"; lb.className = "btn btn-glass btn-sm"; lb.setAttribute("data-live-length", ""); lb.textContent = pc.liveLength; lb.hidden = true;
+    lb.addEventListener("click", () => {
+      if (lb.disabled) return;
+      if (!connectedAddress()) { lt.textContent = pc.liveLengthWallet; return; }
+      lb.disabled = true;
+      lb.textContent = pc.liveLengthPaying;
+      window.dispatchEvent(new CustomEvent("goshi-pay-length"));
+    });
+    livePanel.append(lt, lj, ll, lb);
     document.body.append(livePanel);
     const badge = document.createElement("div");
     badge.className = "tv-badge"; badge.textContent = pc.showBadge;
-    const line = document.createElement("div");
-    line.className = "tv-line";
-    const lines = pc.showLines;
-    let li = 0;
-    line.textContent = lines[0] ?? "";
-    setInterval(() => { li = (li + 1) % lines.length; line.textContent = lines[li]; }, 9000);
-    document.body.append(badge, line);
-    setTimeout(() => document.querySelector<HTMLElement>("[data-fs-toggle]")?.click(), 1500);
+    document.body.append(badge);
+    // No automatic full screen: the wallet may need to show its signing window now, and full screen would cover it.
   }
 
+  // The payment for length is done by the page that holds the wallet; the signature comes back here and goes to the server.
+  window.addEventListener("goshi-length-paid", (ev) => {
+    const sig = (ev as CustomEvent<{ sig: string | null }>).detail.sig;
+    const lb = livePanel?.querySelector<HTMLButtonElement>("[data-live-length]");
+    if (!sig) { if (lb) { lb.disabled = false; lb.textContent = pc.liveLength; } return; }
+    (pClient as unknown as { buyLength?: (s: string) => boolean } | null)?.buyLength?.(sig);
+  });
+  function onLength(m: { t: string; bonus?: number; reason?: string }) {
+    const lb = livePanel?.querySelector<HTMLButtonElement>("[data-live-length]");
+    const lt = livePanel?.querySelector<HTMLElement>("[data-live-text]");
+    if (!lb) return;
+    if (m.t === "lengthOk") {
+      const max = (m.bonus ?? 0) >= 0.2 - 1e-9;
+      lb.disabled = max;
+      lb.textContent = max ? pc.liveLengthMax : pc.liveLength;
+      if (lt) lt.textContent = pc.liveLengthOk.replace("{n}", String(Math.round((m.bonus ?? 0) * 100)));
+    } else {
+      lb.disabled = m.reason === "max" || m.reason === "credit";
+      lb.textContent = m.reason === "max" || m.reason === "credit" ? pc.liveLengthMax : pc.liveLength;
+      if (lt && m.reason === "credit") lt.textContent = pc.liveLengthCredit;
+      else if (lt && m.reason !== "max") lt.textContent = pc.liveLengthFail;
+    }
+  }
+
+  /** The live arena chosen in the list (one per entry on the test network); null is the first one. */
+  let chosenArena: string | null = null;
+  /** The ticket picked to enter: its payment signature, sent with the place. */
+  let prepaidSig: string | null = null;
+  /** Waits for one answer event from the wallet page, or null after `ms` (the screen never hangs). */
+  function ask<T>(askName: string, answer: string, detail: unknown, ms: number): Promise<T | null> {
+    return new Promise((res) => {
+      const t = setTimeout(() => { window.removeEventListener(answer, on); res(null); }, ms);
+      const on = (e: Event) => { clearTimeout(t); window.removeEventListener(answer, on); res((e as CustomEvent<T>).detail); };
+      window.addEventListener(answer, on);
+      window.dispatchEvent(new CustomEvent(askName, { detail }));
+    });
+  }
+  type ArenaRow = { id: string; entry: number; humans: number; places: number; pool: number };
+  /**
+   * The arenas screen, in two steps that never mix: buy a ticket (one wallet payment of that arena's entry, nothing else), then
+   * enter with a ticket (no wallet at all). Tickets are the payments themselves, on chain, so one is never lost: it stays until it
+   * buys a place. Without a wallet a person can still enter, playing for nothing. With one arena (or none listed) it goes straight on.
+   */
+  let arenaGate: HTMLElement | null = null;
+  function chooseArena(go: () => void) {
+    // One arenas screen at a time: a second call (a double tap, two handlers on one button) keeps the one already open.
+    if (arenaGate?.isConnected) return;
+    const gate = document.createElement("div");
+    arenaGate = gate;
+    gate.className = "tv-gate cash-gate arena-gate";
+    const h = document.createElement("p"); h.className = "cash-gate-msg"; h.textContent = pc.connecting;
+    const note = document.createElement("p"); note.className = "arena-note"; note.setAttribute("role", "status");
+    const grid = document.createElement("div"); grid.className = "arena-pick";
+    const close = document.createElement("button"); close.type = "button"; close.className = "btn btn-glass btn-sm"; close.textContent = pc.cashPayClose;
+    close.addEventListener("click", () => gate.remove());
+    gate.append(h, grid, note, close);
+    document.body.append(gate);
+    let busy = false;
+    const draw = async () => {
+      const got = await ask<{ arenas: ArenaRow[] }>("goshi-arenas-ask", "goshi-arenas", null, 10_000);
+      if (!gate.isConnected) return;
+      const list = got?.arenas ?? [];
+      if (!got) {
+        h.textContent = pc.arenasError;
+        grid.replaceChildren();
+        const retry = document.createElement("button"); retry.type = "button"; retry.className = "btn btn-gold btn-lg"; retry.textContent = pc.arenasRetry;
+        retry.addEventListener("click", () => { h.textContent = pc.connecting; void draw(); });
+        grid.append(retry);
+        return;
+      }
+      if (list.length <= 1 && !list[0]) { gate.remove(); go(); return; }
+      const addr = connectedAddress();
+      // The server's list, plus the tickets bought in this browser (a fresh purchase shows at once, even before the server lists it).
+      const tk = addr ? (await ask<{ tickets: { sig: string; lamports: number }[] }>("goshi-cash-tickets-ask", "goshi-cash-tickets", null, 10_000))?.tickets ?? [] : [];
+      if (addr) {
+        try {
+          const local = (JSON.parse(localStorage.getItem("goshi-cash-tickets") ?? "[]") as { w: string; sig: string; lamports: number; at: number }[])
+            .filter((t) => t.w === addr && Date.now() - t.at < 48 * 3600_000);
+          for (const t of local) if (!tk.some((x) => x.sig === t.sig)) tk.push({ sig: t.sig, lamports: t.lamports });
+        } catch { /* storage blocked: the server's list only */ }
+      }
+      if (!gate.isConnected) return;
+      myTickets = tk;
+      h.textContent = pc.arenasTitle;
+      grid.replaceChildren();
+      for (const a of list) {
+        // A ticket is for the arena of its exact amount, nowhere else.
+        const mine = tk.filter((t) => t.lamports === a.entry);
+        const card = document.createElement("div"); card.className = "tier-card";
+        const big = document.createElement("strong"); big.textContent = fill(pc.arenaEntry, { n: String(a.entry / 1e9) });
+        const row = document.createElement("span"); row.textContent = fill(pc.arenaRow, { humans: a.humans, places: a.places, pool: (a.pool / 1e9).toFixed(4) });
+        card.append(big, row);
+        if (addr) {
+          const have = document.createElement("span"); have.className = "arena-tickets"; have.textContent = fill(pc.ticketsHave, { n: mine.length });
+          const buy = document.createElement("button"); buy.type = "button"; buy.className = "btn btn-glass btn-sm"; buy.textContent = fill(pc.ticketBuy, { n: String(a.entry / 1e9) });
+          buy.addEventListener("click", async () => {
+            if (busy) return;
+            busy = true; note.textContent = pc.ticketBuying;
+            const r = await ask<{ sig: string | null; lamports: number }>("goshi-cash-buy", "goshi-cash-bought", { arena: a.id }, 120_000);
+            busy = false;
+            if (!gate.isConnected) return;
+            note.textContent = r?.sig ? fill(pc.ticketBought, { tx: r.sig.slice(0, 8) }) : pc.ticketBuyFail;
+            void draw();
+          });
+          const enter = document.createElement("button"); enter.type = "button"; enter.className = "btn btn-gold btn-sm"; enter.textContent = pc.ticketEnter;
+          enter.disabled = mine.length === 0;
+          enter.addEventListener("click", () => { if (!mine[0]) return; chosenArena = a.id; prepaidSig = mine[0].sig; gate.remove(); go(); });
+          card.append(have, buy, enter);
+        } else {
+          const free = document.createElement("button"); free.type = "button"; free.className = "btn btn-gold btn-sm"; free.textContent = pc.ticketEnterFree;
+          free.addEventListener("click", () => { chosenArena = a.id; prepaidSig = null; gate.remove(); go(); });
+          card.append(free);
+        }
+        grid.append(card);
+      }
+    };
+    void draw();
+  }
+
+  /** The cash arena of the test network: its entry now and its vault (from the last status), or null elsewhere. */
+  let liveCash: { price: number; vault: string } | null = null;
+  /** The connected wallet's paid tickets not used yet (asked every 20 s while the arena panel is open). */
+  let myTickets: { sig: string; lamports: number }[] = [];
+  let ticketsAskedAt = 0;
+  window.addEventListener("goshi-cash-tickets", (e) => { myTickets = (e as CustomEvent<{ tickets: { sig: string; lamports: number }[] }>).detail.tickets; });
+  /** What the server is told about this player's look: the skin, or the goshi color as "hue:N", so every screen and the VAR show it. */
+  const lookId = (): string | undefined => selectedSkin() ?? (colorIndex !== null ? `hue:${colorIndex}` : undefined);
   function liveJoin() {
-    const c = pClient as unknown as { liveJoin?: (n?: string, w?: string, s?: string) => boolean } | null;
+    const c = pClient as unknown as { liveJoin?: (n?: string, w?: string, s?: string, sig?: string) => boolean } | null;
     const nameEl = document.getElementById("play-now-name") as HTMLInputElement | null;
     const clean = (nameEl?.value ?? "").trim().replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 14).trim();
-    c?.liveJoin?.(clean || undefined, connectedAddress() ?? undefined, selectedSkin() ?? undefined);
+    const addr = connectedAddress() ?? undefined;
+    // With a wallet in the cash arena, the entry is paid to the vault first (devnet SOL, signed in the wallet), then the place is
+    // taken with its signature. Without a wallet, the place is taken playing for nothing.
+    if (prepaidSig && addr) {
+      // The ticket is only spent here once the request really left: if the connection to the arena server is not ready yet (or
+      // its sign-in is pending), the ticket is kept and the place is asked again as soon as the arena answers.
+      if (c?.liveJoin?.(clean || undefined, addr, lookId(), prepaidSig)) prepaidSig = null;
+      else autoJoinLive = true;
+      return;
+    }
+    // Another life in a cash arena with a wallet: the arenas screen again (a ticket is picked or bought there).
+    if (liveCash && addr) { chooseArena(() => enterLiveArena(true)); return; }
+    c?.liveJoin?.(clean || undefined, addr, lookId());
   }
-  function onLive(m: { state: "watching" | "queued" | "playing" | "dead"; places: number; humans: number; waiting: number; watching: number; you?: string; pos?: number }) {
+  function onLive(m: { state: "watching" | "queued" | "playing" | "dead"; places: number; humans: number; waiting: number; watching: number; you?: string; pos?: number; cash?: { price: number; vault: string } }) {
+    liveCash = m.cash ?? null;
     if (m.state === "playing" && m.you) arena?.setYou(m.you);
-    if (autoJoinLive && m.state === "watching") { autoJoinLive = false; liveJoin(); }
+    // The team wallet: CEO mode (if it was on) is handed back to a new body. It no longer takes a place again on its own.
+    if (ceoSession && showMode) {
+      if (m.state === "playing" && ceoAfk) {
+        if (arena) arena.autopilot = true;
+        (pClient as unknown as { afk?: (on: boolean) => boolean } | null)?.afk?.(true);
+      }
+    }
+    if (autoJoinLive && (m.state === "watching" || m.state === "dead")) { autoJoinLive = false; liveJoin(); }
     if (!livePanel) return;
     const text = livePanel.querySelector<HTMLElement>("[data-live-text]")!;
     const join = livePanel.querySelector<HTMLButtonElement>("[data-live-join]")!;
     const leave = livePanel.querySelector<HTMLButtonElement>("[data-live-leave]")!;
-    const counts = fill(pc.liveCounts, { humans: m.humans, places: m.places, waiting: m.waiting, watching: m.watching });
+    const counts = fill(pc.liveCounts, { humans: m.humans, places: m.places, waiting: m.waiting, watching: m.watching })
+      + (m.cash ? ` · ${fill(connectedAddress() ? pc.liveCashPrice : pc.liveCashFree, { n: (m.cash.price / 1e9).toFixed(9) })}` : "");
+    if (m.cash && connectedAddress() && Date.now() - ticketsAskedAt > 20_000) { ticketsAskedAt = Date.now(); window.dispatchEvent(new CustomEvent("goshi-cash-tickets-ask")); }
+    const ticketText = m.cash && myTickets.length ? ` · ${fill(pc.cashTickets, { n: myTickets.length })}` : "";
+    const buy = livePanel.querySelector<HTMLButtonElement>("[data-live-length]");
+    if (buy) buy.hidden = m.state !== "playing" || !CONTRACT_V6;
     if (m.state === "playing") { text.textContent = `${pc.livePlaying} · ${counts}`; join.hidden = true; leave.hidden = false; }
     else if (m.state === "queued") { text.textContent = `${fill(pc.liveQueued, { n: m.pos ?? 1 })} · ${counts}`; join.hidden = true; leave.hidden = false; }
-    else if (m.state === "dead") { text.textContent = `${pc.liveDead} · ${counts}`; join.hidden = false; leave.hidden = true; }
-    else { text.textContent = counts; join.hidden = false; leave.hidden = true; }
+    else if (m.state === "dead") { text.textContent = `${pc.liveDead} · ${counts}${ticketText}`; join.hidden = false; leave.hidden = true; }
+    else { text.textContent = counts + ticketText; join.hidden = false; leave.hidden = true; }
   }
   async function startPractice() {
+    // A practice or live match of one's own has no room code to show.
+    { const tag = document.querySelector<HTMLElement>("[data-room-code]"); if (tag) tag.hidden = true; }
     if (!showMode && !tutoSeen() && !(await showTutorial())) return;
     const { btn, name, msg, leave } = cardEls();
     const clean = name.value.trim().replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 14).trim();
@@ -774,12 +958,12 @@ function createShell(d: ShellData): ArenaShell {
       c = new ServerClientCtor(practiceUrl, { address: "", signMessage: async () => new Uint8Array() }, { anonymous: true });
     }
     pClient = c;
-    link = c;
+    useLink(c);
     pTimeout = setTimeout(() => { if (pClient === c && !pStarted) { if (showMode) { setTimeout(() => { if (showMode && pClient === c) void startPractice(); }, 2500); } else practiceFail(pc.unreachable); } }, CONNECT_TIMEOUT_MS);
     c.on("status", ({ status }) => {
       if (pClient !== c) return;
       if (status === "ready") {
-        if (showMode) c.liveWatch();
+        if (showMode) { (c as unknown as { liveArena: string | null }).liveArena = chosenArena; c.liveWatch(); }
         else c.practice(clean, connectedAddress() ?? undefined, currentDifficulty(), (document.getElementById("play-now-mode") as HTMLSelectElement | null)?.value === "survival" ? "survival" : undefined);
       }
       else if (status === "closed" && !pEnded) {
@@ -797,6 +981,7 @@ function createShell(d: ShellData): ArenaShell {
     });
     c.on("entered", (m) => { pRoom = m.roomId; });
     c.on("live", (m) => { if (pClient === c) onLive(m); });
+    c.on("message", (m) => { if (pClient === c && (m.t === "lengthOk" || m.t === "lengthNo")) onLength(m); });
     c.on("skins", (m) => { if (pClient === c) arena?.setPlayerSkins(m.map); });
     c.on("start", (m) => {
       if (pClient !== c) return;
@@ -912,6 +1097,7 @@ function createShell(d: ShellData): ArenaShell {
     // The page is never moved at the end of a match: the person may be recording the screen.
     resultEl.focus({ preventScroll: true });
     teardownPractice(false);
+    window.dispatchEvent(new CustomEvent("goshi-match-over"));
   }
 
   function stopPractice() {
@@ -996,10 +1182,191 @@ function createShell(d: ShellData): ArenaShell {
     source = roomView ? "room" : null;
     setText(lobbyEl, live.lobby.idle);
     renderLobby();
+    window.dispatchEvent(new CustomEvent("goshi-match-over"));
+  }
+
+  // ------------------------------------------------------------------ guest onboarding wizard (test site only)
+
+  let wizardBound = false;
+  function bindGuestWizard() {
+    const root = document.getElementById("guest-wizard");
+    if (!root || wizardBound) return;
+    const gc = d.t.guest;
+    if (!gc) return;
+    wizardBound = true;
+    const stepEls = {
+      identity: root.querySelector<HTMLElement>('[data-guest-step="identity"]')!,
+      modes: root.querySelector<HTMLElement>('[data-guest-step="modes"]')!,
+      duel: root.querySelector<HTMLElement>('[data-guest-step="duel"]')!,
+    };
+    const nameEl = $("guest-name") as HTMLInputElement;
+    const msgEl = $("guest-duel-msg");
+    const waitEl = $("guest-duel-wait");
+    const startBtn = $("guest-duel-start") as HTMLButtonElement;
+    const playRoot = $("play");
+
+    const showStep = (which: keyof typeof stepEls) => {
+      stepEls.identity.hidden = which !== "identity";
+      stepEls.modes.hidden = which !== "modes";
+      stepEls.duel.hidden = which !== "duel";
+    };
+
+    // The wizard swatches share the stored color with the practice card.
+    root.querySelectorAll<HTMLInputElement>("[data-guest-color]").forEach((el) => {
+      el.checked = colorIndex !== null && Number(el.value) === colorIndex;
+      el.addEventListener("change", () => {
+        colorIndex = Number(el.value);
+        try { localStorage.setItem(COLOR_KEY, String(colorIndex)); } catch { /* private mode */ }
+        arena?.setOwnColor(colorIndex);
+      });
+    });
+
+    // Advanced options: the closed summary hides the wallet and on-chain panels; opening it reveals them.
+    const adv = $("play-advanced") as HTMLDetailsElement | null;
+    adv?.addEventListener("toggle", () => { if (adv) playRoot.toggleAttribute("data-guest-advanced", adv.open); });
+
+    // Identity step: newcomers get a fun generated name, returning guests keep theirs. A name the old
+    // card generated (Player + digits) is upgraded to a fun name once.
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(NAME_KEY); } catch { /* blocked */ }
+    if (stored && !/^Player\d{4}$/.test(stored)) nameEl.value = stored;
+    else { const made = makeGuestName(Math.random); nameEl.value = made; rememberName(made); }
+    const commitName = (): string => {
+      const clean = cleanGuestName(nameEl.value) || savedName();
+      nameEl.value = clean;
+      rememberName(clean);
+      const cardName = document.getElementById("play-now-name") as HTMLInputElement | null;
+      if (cardName) cardName.value = clean;
+      return clean;
+    };
+    $("guest-go").addEventListener("click", () => {
+      setText($("guest-greeting"), fill(gc.greeting, { name: commitName() }));
+      showStep("modes");
+    });
+    nameEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("guest-go").click(); } });
+    $("guest-rename").addEventListener("click", () => showStep("identity"));
+
+    const launch = async (mode: "practice" | "arena" | "survival") => {
+      commitName();
+      // The three step guide shows once, before the very first match of any mode.
+      if (!tutoSeen() && !(await showTutorial())) return;
+      root.hidden = true;
+      if (mode === "arena") {
+        // Reuse the live arena button: same handler, same flow.
+        document.getElementById("play-live-btn")?.click();
+        return;
+      }
+      const sel = document.getElementById("play-now-mode") as HTMLSelectElement | null;
+      if (sel) sel.value = mode;
+      void startPractice();
+    };
+    root.querySelectorAll<HTMLButtonElement>("[data-guest-mode]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const mode = b.dataset.guestMode;
+        if (mode === "duel") showStep("duel");
+        else if (mode === "practice" || mode === "arena" || mode === "survival") void launch(mode);
+      });
+    });
+
+    window.addEventListener("goshi-match-over", () => { root.hidden = false; showStep("modes"); });
+
+    // Duel with friends: a free guest room with a shareable code (server: GUEST_ROOMS=1, devnet only).
+    let gClient: ServerClient | null = null;
+    let gMax = 5;
+    let gHost = false;
+    let pendingGroom: (() => void) | null = null;
+
+    const paintLobby = (players: { n: string; host: boolean }[]) => {
+      waitEl.hidden = false;
+      startBtn.hidden = !gHost;
+      setText(msgEl, "");
+      waitEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      setText($("guest-duel-players"), fill(gc.duelPlayers, { n: players.length, max: gMax }));
+    };
+
+    /** The server of this guest room (the region where it was made), and the join being tried across regions. */
+    let gUrl: string | null = null;
+    let gJoin: { name: string; code: string } | null = null;
+    let gJoinTry = 0;
+    const groomClient = async (): Promise<ServerClient | null> => {
+      if (gClient) return gClient;
+      let Ctor: typeof ServerClient;
+      try {
+        ({ ServerClient: Ctor } = await import("../lib/play/server-client.ts"));
+      } catch {
+        setText(msgEl, pc.unreachable);
+        return null;
+      }
+      const c = new Ctor(gUrl ?? practiceServer(), { address: "", signMessage: async () => new Uint8Array() }, { anonymous: true });
+      gClient = c;
+      c.on("status", ({ status }) => {
+        if (status === "ready" && pendingGroom) { const p = pendingGroom; pendingGroom = null; p(); }
+        else if (status === "closed" && gClient === c) setText(msgEl, pc.unreachable);
+      });
+      c.on("groomCreated", (m) => {
+        gMax = m.max;
+        setText($("guest-duel-code"), m.code);
+        paintLobby(m.players);
+        // The code stays on the board during the match too (others can still join with it).
+        const tag = document.querySelector<HTMLElement>("[data-room-code]");
+        if (tag) { tag.textContent = `${gc.duelCode}: ${m.code}`; tag.hidden = false; }
+      });
+      c.on("groomUpdate", (m) => paintLobby(m.players));
+      c.on("entered", () => { if (gClient === c) root.hidden = true; });
+      c.on("start", (m) => { if (gClient !== c) return; pRoom = m.roomId; pStarted = true; onStart("practice", m); });
+      c.on("snap", (m) => { if (gClient === c && source === "practice") onSnap(m); });
+      c.on("fsnap", (m) => { if (gClient === c) withFrenzy((v) => v.snap(m)); });
+      c.on("fend", (m) => { if (gClient === c) withFrenzy((v) => v.end(m)); });
+      c.on("end", (m) => { if (gClient === c) practiceEnd(m); });
+      c.on("error", (m) => {
+        if (gClient !== c) return;
+        // A guest room lives on the server where it was made: when the code is not on this one, try the other regions.
+        const regions = d.settings.regions ?? [];
+        if (m.code === "no_room" && !gHost && gJoin && gJoinTry < regions.length - 1) {
+          gJoinTry++;
+          const here = regions.findIndex((r) => r.url === (gUrl ?? practiceServer()));
+          gUrl = regions[(Math.max(0, here) + 1) % regions.length].url;
+          gClient = null;
+          c.close();
+          const j = gJoin;
+          void groomClient().then((nc) => { if (nc) whenReady(nc, () => nc.groomJoin(j.name, j.code)); });
+          return;
+        }
+        setText(msgEl, m.code === "no_room" ? gc.duelBadCode : m.code === "busy" ? gc.busy : fill(pc.failed, { message: m.message || m.code }));
+      });
+      c.connect();
+      return c;
+    };
+    const whenReady = (c: ServerClient, fn: () => void) => { if (c.isReady) fn(); else pendingGroom = fn; };
+
+    $("guest-duel-create").addEventListener("click", async () => {
+      const clean = commitName();
+      setText(msgEl, pc.connecting);
+      const c = await groomClient();
+      if (!c) return;
+      gHost = true;
+      whenReady(c, () => c.groomCreate(clean));
+    });
+    $("guest-duel-join").addEventListener("click", async () => {
+      const code = cleanGuestCode(($("guest-code") as HTMLInputElement).value);
+      if (!code) { setText(msgEl, gc.duelBadCode); return; }
+      const clean = commitName();
+      gJoin = { name: clean, code };
+      gJoinTry = 0;
+      setText(msgEl, pc.connecting);
+      const c = await groomClient();
+      if (!c) return;
+      gHost = false;
+      whenReady(c, () => c.groomJoin(clean, code));
+    });
+    startBtn.addEventListener("click", () => gClient?.groomStart());
+    $("guest-duel-back").addEventListener("click", () => showStep("modes"));
   }
 
   const api: ArenaShell = {
     get source() { return source; },
+
+    bindGuestWizard() { bindGuestWizard(); },
 
     bindCard() {
       if (cardBound) return;
@@ -1010,7 +1377,7 @@ function createShell(d: ShellData): ArenaShell {
       // The live arena, straight in: one button on the page, no link to know.
       document.getElementById("play-live-btn")?.addEventListener("click", () => {
         document.querySelector(".tv-gate")?.remove();
-        enterLiveArena(true);
+        chooseArena(() => enterLiveArena(true));
       });
       leave.addEventListener("click", () => stopPractice());
       name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); void startPractice(); } });
@@ -1023,10 +1390,10 @@ function createShell(d: ShellData): ArenaShell {
         gate.className = "tv-gate";
         const play = document.createElement("button");
         play.type = "button"; play.className = "btn btn-gold btn-lg"; play.textContent = pc.liveJoin;
-        play.addEventListener("click", () => { gate.remove(); enterLiveArena(true); });
+        play.addEventListener("click", () => { gate.remove(); chooseArena(() => enterLiveArena(true)); });
         const go = document.createElement("button");
         go.type = "button"; go.className = "btn btn-glass btn-lg"; go.textContent = pc.liveWatchOnly;
-        go.addEventListener("click", () => { gate.remove(); enterLiveArena(false); });
+        go.addEventListener("click", () => { gate.remove(); chooseArena(() => enterLiveArena(false)); });
         gate.className = "tv-gate tv-gate-two";
         gate.append(play);
         gate.append(go);
@@ -1036,7 +1403,8 @@ function createShell(d: ShellData): ArenaShell {
         params.delete("play");
         const rest = params.toString();
         history.replaceState(null, "", `${location.pathname}${rest ? `?${rest}` : ""}${location.hash}`);
-        void startPractice();
+        // The guest wizard is the front door of the test site: it decides how to play, no auto start.
+        if (!document.getElementById("guest-wizard")) void startPractice();
       }
     },
     startPractice() { void startPractice(); },
@@ -1044,7 +1412,7 @@ function createShell(d: ShellData): ArenaShell {
 
     roomEntering(roomId, c) {
       if (source === "practice") return; // a practice match on screen is not interrupted by looking at a room
-      link = c;
+      useLink(c);
       source = "room";
       setText(lobbyEl, fill(live.lobby.entering, { id: roomId }));
       gameHost.hidden = true;
@@ -1063,7 +1431,7 @@ function createShell(d: ShellData): ArenaShell {
     roomStart(m, c) {
       // The match of the room replaces a practice that was running.
       if (source === "practice") { teardownPractice(true); pEnded = true; const { btn, leave } = cardEls(); btn.disabled = false; leave.hidden = true; disposeArena(); }
-      link = c;
+      useLink(c);
       onStart("room", m);
     },
     roomFrenzySnap(m) { withFrenzy((v) => v.snap(m)); },

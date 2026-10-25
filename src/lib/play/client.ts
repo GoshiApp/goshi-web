@@ -5,9 +5,9 @@
 // What it does: list and read rooms, take a paid seat (join_room) or a saboteur seat (join_free), read balances.
 // What it does NOT do: create rooms, finalize, cancel or run the swap. Those need the platform authority key and run on a server.
 
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, TokenAccountNotFoundError, getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { GoshiEscrow, ROOM_LEN, decodeConfig, decodeRoom, type RoomAccount } from "./escrow-native.ts";
+import { GoshiEscrow, LEGACY_ROOM_LEN, ROOM_LEN, decodeConfig, decodeRoom, type RoomAccount } from "./escrow-native.ts";
 import { PlayError, classifyError, txErrorText } from "./errors.ts";
 import { canJoinFree, canJoinPaid, sortRooms, type RoomView } from "./rooms.ts";
 import type { Signer } from "./wallet.ts";
@@ -110,7 +110,9 @@ export class PlayClient {
 
   /** Every MatchRoom account of the program: waiting rooms first, then by number. */
   async listRooms(): Promise<RoomView[]> {
-    const all = await this.connection.getProgramAccounts(this.programId, { commitment: "confirmed", filters: [{ dataSize: ROOM_LEN }] });
+    // Rooms of the v6 program and the ones made before it (no backpacks) have different sizes: both are read.
+    const all = (await Promise.all([ROOM_LEN, LEGACY_ROOM_LEN].map((dataSize) =>
+      this.connection.getProgramAccounts(this.programId, { commitment: "confirmed", filters: [{ dataSize }] })))).flat();
     const rooms: RoomView[] = [];
     for (const { account } of all) {
       const r = decodeRoom(account.data);
@@ -154,7 +156,7 @@ export class PlayClient {
   // ------------------------------------------------------------------ writes
 
   /** Takes a paid seat: the entry fee (SOL) moves from the wallet into the room account. */
-  async joinRoom(roomId: bigint, wallet: Signer, cb: SendCallbacks = {}): Promise<string> {
+  async joinRoom(roomId: bigint, wallet: Signer, cb: SendCallbacks = {}, backpack: bigint = 0n): Promise<string> {
     await this.verifyConfig();
     const room = await this.fetchRoom(roomId);
     if (!room) throw new PlayError("roomGone");
@@ -162,14 +164,16 @@ export class PlayClient {
     if (!check.ok) throw new PlayError(check.reason);
     // The fee plus a margin for the network fee.
     const have = await this.getSolBalance(wallet.publicKey);
-    const need = room.entryFee + NETWORK_FEE_MARGIN;
+    // v6: the backpack for traps travels with the entry (at most the fee) and comes back in full when it is not spent.
+    if (backpack < 0n || backpack > room.entryFee) backpack = 0n;
+    const need = room.entryFee + backpack + NETWORK_FEE_MARGIN;
     if (have < need) {
       throw new PlayError("insufficientSol", "not enough SOL", undefined, {
         need: need.toString(), fee: room.entryFee.toString(), network: NETWORK_FEE_MARGIN.toString(), have: have.toString(),
       });
     }
 
-    const tx = new Transaction().add(this.escrow.joinRoom(wallet.publicKey, roomId));
+    const tx = new Transaction().add(this.escrow.joinRoom(wallet.publicKey, roomId, backpack));
     return this.send(tx, wallet, cb);
   }
 
@@ -266,6 +270,24 @@ export class PlayClient {
       throw new PlayError(kind === "unknown" ? "network" : kind, e instanceof Error ? e.message : String(e), signature);
     }
     return signature;
+  }
+
+  /** Pays an amount straight to an address (the cash arena entry, to its vault on the test network). */
+  async payTo(to: string, lamports: bigint, wallet: Signer, cb: SendCallbacks = {}): Promise<string> {
+    await this.verifyConfig();
+    const tx = new Transaction().add(SystemProgram.transfer({ fromPubkey: wallet.publicKey, toPubkey: new PublicKey(to), lamports }));
+    return this.send(tx, wallet, cb);
+  }
+
+  /** Pays the house straight from the wallet: half to maintenance (infra wallet), half to the project (liquidity wallet). */
+  async payHouse(lamports: bigint, wallet: Signer, cb: SendCallbacks = {}): Promise<string> {
+    await this.verifyConfig();
+    const half = lamports / 2n;
+    const tx = new Transaction().add(
+      SystemProgram.transfer({ fromPubkey: wallet.publicKey, toPubkey: this.infraWallet, lamports: half }),
+      SystemProgram.transfer({ fromPubkey: wallet.publicKey, toPubkey: this.liquidityWallet, lamports: lamports - half }),
+    );
+    return this.send(tx, wallet, cb);
   }
 
   private async send(tx: Transaction, wallet: Signer, cb: SendCallbacks): Promise<string> {

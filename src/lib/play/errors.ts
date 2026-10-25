@@ -104,6 +104,8 @@ export const ESCROW_ERROR_NAMES = [
   "AlreadyInitialized",
   "BadInstruction",
   "TooEarly",
+  "BackpackOpen",
+  "BadBackpack",
 ] as const;
 export const ESCROW_ERROR_BASE = 6000;
 

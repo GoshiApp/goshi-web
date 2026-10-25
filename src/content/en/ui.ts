@@ -118,7 +118,7 @@ export const calc: CalcCopy = {
     saboteursHelp: "From 0 to 3. They do not compete: they share 2% of the pot equally, paid in SOL.",
     invalid: "Enter an entry fee above zero, from 3 to 10 paid players and from 0 to 3 saboteurs.",
     pass: "One seat is a pass seat",
-    passHelp: "A pass seat pays nothing: the house forgoes its fee in that room and the room never owes more than it holds.",
+    passHelp: "[[t:A pass seat pays nothing: the prizes of that room are computed on what it really holds, and the room never owes more than it holds.]][[m:A pass seat pays nothing: the house forgoes its fee in that room and the room never owes more than it holds.]]",
   },
   vs: { h3: "A VS match", fee: "Entry fee (SOL)", players: "Paid players", playersHelp: "From 2 to 9. No saboteurs in VS mode.", invalid: "Enter an entry fee above zero and from 2 to 9 players." },
   head: ["Who gets it", "Paid as", "Amount"],
@@ -140,7 +140,7 @@ export const calc: CalcCopy = {
     loser: "Each other player",
   },
   kinds: { sol: "SOL", goshi: "$GOSHI (SOL value)", none: "nothing" },
-  note: "The pot is the entry fees of the paid players. 88% is the prize pool for the top three paid players: 60%, 25% and 15%. 2% is shared equally by the saboteurs, who do not compete. The house keeps what is left, 10% of the pot, split 10% buy-back and burn, 15% infrastructure, 25% liquidity and community, 50% super pot. With a pass seat the house forgoes its fee in that room.",
+  note: "[[t:The pot is the entry fees of the paid players. 97% becomes coins on the map: every paid player is paid the coins in their bag, and coins nobody holds at the end are split equally between the top three paid players. Saboteurs are not paid. The house keeps 3% of the pot, split 10% buy-back and burn, 15% infrastructure, 25% liquidity and community, 50% super pot. With a pass seat the prizes are computed on what the room really holds.]][[m:The pot is the entry fees of the paid players. 88% is the prize pool for the top three paid players: 60%, 25% and 15%. 2% is shared equally by the saboteurs, who do not compete. The house keeps what is left, 10% of the pot, split 10% buy-back and burn, 15% infrastructure, 25% liquidity and community, 50% super pot. With a pass seat the house forgoes its fee in that room.]]",
   unit: "SOL",
 };
 

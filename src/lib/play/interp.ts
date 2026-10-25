@@ -24,6 +24,56 @@ export const RENDER_DELAY_MS = 120;
 export const LIVE_DELAY_MS = 60;
 /** Snapshot interval of the server (20 Hz). */
 export const TICK_MS = 50;
+/** The live buffer never waits longer than this, whatever the network does. */
+export const MAX_LIVE_DELAY_MS = 220;
+/** Players are moved ahead by at most this much for the ping: more overshoots on every turn. */
+export const MAX_LEAD_MS = 30;
+
+/**
+ * Live delay that fits the stream: one snapshot interval (50 ms at 20 Hz, 100 ms for viewers at 10 Hz) plus twice the
+ * measured arrival jitter, never below LIVE_DELAY_MS nor above MAX_LIVE_DELAY_MS.
+ */
+export function adaptiveLiveDelay(intervalMs: number, jitterMs: number): number {
+  const d = Math.max(0, intervalMs) + 2 * Math.max(0, jitterMs) + 10;
+  return Math.min(MAX_LIVE_DELAY_MS, Math.max(LIVE_DELAY_MS, d));
+}
+
+/**
+ * Turns arrival times into tick times: `at = tick * TICK_MS + offset`, where the offset follows the fastest arrivals
+ * (a late packet does not move the clock) and drifts slowly up when the link gets slower. A tick that goes back or a
+ * jump of more than a second (new match, reconnect) starts the clock again.
+ */
+export class TickClock {
+  private offset: number | undefined;
+  private lastTick = -1;
+  /** Smoothed arrival jitter (ms). */
+  jitterMs = 0;
+  /** Smoothed interval between snapshots (ms) by their ticks. */
+  intervalMs = TICK_MS;
+
+  stamp(arrival: number, tick: number | undefined): number {
+    if (tick === undefined) return arrival;
+    const off = arrival - tick * TICK_MS;
+    if (this.offset === undefined || tick <= this.lastTick || Math.abs(off - this.offset) > 1000) {
+      this.offset = off;
+      this.jitterMs = 0;
+      this.intervalMs = TICK_MS;
+    } else {
+      this.intervalMs += ((tick - this.lastTick) * TICK_MS - this.intervalMs) * 0.1;
+      const late = off - this.offset;
+      this.jitterMs += (Math.abs(late) - this.jitterMs) * 0.1;
+      // Earlier than expected: the clock was behind, follow at once. Later: drift up slowly.
+      this.offset = late < 0 ? off : this.offset + late * 0.02;
+    }
+    this.lastTick = tick;
+    return tick * TICK_MS + this.offset;
+  }
+
+  /** The live delay for the stream as measured so far. */
+  delay(): number {
+    return adaptiveLiveDelay(this.intervalMs, this.jitterMs);
+  }
+}
 /** A jump larger than this between two snapshots is not movement (a bug or a reset): do not glide across the map. */
 export const TELEPORT_DISTANCE = 250;
 const MAX_KEPT = 24;
@@ -110,7 +160,7 @@ export class SnapBuffer {
     const s = this.snaps;
     if (s.length === 0) return null;
     const t = now - delay;
-    const lead = Math.max(0, rttMs) / 2000;
+    const lead = Math.min(MAX_LEAD_MS, Math.max(0, rttMs) / 2) / 1000;
     const last = s[s.length - 1];
     const prevLast = s.length > 1 ? s[s.length - 2] : null;
     if (t <= s[0].at) return this.sampler.build(null, s[0], 1, lead);

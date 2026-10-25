@@ -1,11 +1,17 @@
 // The skin collection: shows what is unlocked (by games played, best mass, or $GOSHI held), lets the person choose one and
 // tells the rest of the page. Holder skins need a wallet: the balance is read by the game server after a free signature.
 import { SKINS, isUnlocked, readStats, selectSkin, selectedSkin, type Skin } from "../lib/play/skins.ts";
+import { ArenaPainter } from "../lib/play/arena-paint.ts";
 
 interface Strings {
   useLabel: string; inUse: string; locked: string; connect: string; verifying: string; balance: string; notHolder: string;
   rarity: Record<string, string>; names: Record<string, string>; unlock: Record<string, string>; api: string;
 }
+// The test sites (test and lab) open every skin so they can all be tried; goshi.app keeps them to be earned.
+const env = (import.meta as { env?: Record<string, string | undefined> }).env;
+const ALL_OPEN = env?.PUBLIC_TARGET === "test";
+const open = (s: Skin, st: ReturnType<typeof readStats>, held: number, founder: boolean) => (ALL_OPEN && s.unlock.kind !== "founder") || isUnlocked(s, st, held, founder);
+
 const root = document.querySelector<HTMLElement>("[data-skins]");
 const t = JSON.parse(root?.querySelector("[data-skins-i18n]")?.textContent ?? "null") as Strings | null;
 if (root && t) {
@@ -23,19 +29,32 @@ if (root && t) {
     const u = s.unlock;
     return (t.unlock[u.kind] ?? "").replace("{n}", "n" in u ? fmt(u.n) : "");
   };
-  const swatch = (s: Skin): string => `linear-gradient(90deg, ${s.style.body} 0 50%, ${s.style.alt ?? s.style.body} 50% 100%)`;
+  // A real painted mini worm for the meme skins, so the picker shows the face and not a bare color stripe.
+  const painter = new ArenaPainter();
+  const previewCanvas = (s: Skin): HTMLCanvasElement => {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cv = document.createElement("canvas");
+    cv.width = 96 * dpr;
+    cv.height = 64 * dpr;
+    cv.style.width = "100%";
+    cv.style.height = "100%";
+    const ctx = cv.getContext("2d")!;
+    painter.preview(ctx, s.style, 62 * dpr, 30 * dpr, 13 * dpr, 400);
+    return cv;
+  };
 
   function draw() {
     const st = readStats();
     const sel = selectedSkin();
     grid.textContent = "";
     for (const s of SKINS) {
-      const ok = isUnlocked(s, st, held, founder);
+      const ok = open(s, st, held, founder);
       const li = document.createElement("li");
       li.className = `skin skin-${s.rarity}${ok ? "" : " is-locked"}${sel === s.id ? " is-on" : ""}`;
       const sw = document.createElement("span");
       sw.className = "skin-swatch";
-      sw.style.background = swatch(s);
+      sw.classList.add("skin-swatch-pic");
+      sw.append(previewCanvas(s));
       const name = document.createElement("b");
       name.textContent = t!.names[s.id] ?? s.id;
       const r = document.createElement("span");
@@ -56,6 +75,7 @@ if (root && t) {
         draw();
       });
       li.append(sw, name, r, need, b);
+      li.dataset.skin = s.id;
       grid.append(li);
     }
     // The same choice, as a row of small swatches next to the practice button.
@@ -63,11 +83,19 @@ if (root && t) {
     if (quick) {
       quick.textContent = "";
       for (const s of SKINS) {
-        if (!isUnlocked(s, st, held, founder)) continue;
+        if (!open(s, st, held, founder)) continue;
         const b = document.createElement("button");
         b.type = "button";
         b.className = `skin-dot${sel === s.id ? " is-on" : ""}`;
-        b.style.background = swatch(s);
+        b.dataset.skin = s.id;
+        // The face of the skin itself, drawn big so the round button shows the head.
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const cv = document.createElement("canvas");
+        cv.width = 30 * dpr; cv.height = 30 * dpr;
+        cv.style.width = "100%"; cv.style.height = "100%"; cv.style.borderRadius = "50%";
+        const ctx = cv.getContext("2d");
+        if (ctx) { ctx.fillStyle = "#0b0f1e"; ctx.fillRect(0, 0, cv.width, cv.height); painter.preview(ctx, s.style, 17 * dpr, 15 * dpr, 11 * dpr, 400); }
+        b.append(cv);
         b.title = t!.names[s.id] ?? s.id;
         b.setAttribute("aria-label", t!.names[s.id] ?? s.id);
         b.setAttribute("aria-pressed", String(sel === s.id));
@@ -119,5 +147,7 @@ if (root && t) {
   connect.addEventListener("click", () => void verify());
   if (held > 0) note.textContent = t.balance.replace("{n}", fmt(Math.round(held)));
   draw();
+  // The token skins wear their real logo: drawn again once the images have loaded.
+  setTimeout(draw, 1500);
   window.addEventListener("goshi-stats-change", draw);
 }

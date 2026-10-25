@@ -41,13 +41,14 @@ const data = {
   settings: {
     rpcUrl: p.rpcUrl, programId: p.programId, goshiMint: p.goshiMint, infraWallet: p.infraWallet, liquidityWallet: p.liquidityWallet,
     serverUrl: p.serverUrl,
+    ...(p.liveUrl ? { liveUrl: p.liveUrl } : {}),
     regions: p.regions ?? [],
   },
   walletNames: WALLET_NAMES,
   homeHref: path(lang, "home"),
   t: {
     quick: c.quick, duel: c.duel,
-    wallet: c.wallet, rooms: c.rooms, practice: c.practice, pot: { room: c.pot.room, unavailable: c.pot.unavailable },
+    wallet: c.wallet, rooms: c.rooms, practice: c.practice, guest: c.guest, pot: { room: c.pot.room, unavailable: c.pot.unavailable },
     entry: c.entry, vsOffer: c.vsOffer, tx: c.tx, errors: c.errors, exact: c.exact, live: c.live, gate: c.gate,
     potLabels: {
       first: c.pot.rows.first.label, second: c.pot.rows.second.label, third: c.pot.rows.third.label, burn: c.pot.rows.burn.label,
@@ -60,9 +61,90 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
 ---
 <!-- Plain file in public/css, linked only here: Astro would otherwise attach a bundled stylesheet to every page. -->
 <link rel="stylesheet" href={`/css/play.css?v=${buildStamp}`} />
-<section class="section play" id="play" data-play-state="live" data-cluster={p.cluster} data-lab={site.lab ? "1" : undefined}>
+<section class="section play" id="play" data-play-state="live" data-cluster={p.cluster} data-lab={site.lab ? "1" : undefined} data-guest-on={site.guestOnboarding ? "1" : undefined}>
   <div class="wrap play-stack">
     <script type="application/json" id="play-data" set:html={json}></script>
+
+    {site.guestOnboarding && (
+      <div class="glass guest-wizard" id="guest-wizard">
+        <div class="guest-step" data-guest-step="identity">
+          <p class="eyebrow">{c.guest.eyebrow}</p>
+          <h2>{c.guest.title}</h2>
+          <p class="guest-sub">{c.guest.subtitle}</p>
+          <label class="guest-name" for="guest-name">
+            <span>{c.guest.nameLabel}</span>
+            <input id="guest-name" type="text" maxlength="14" autocomplete="nickname" autocapitalize="words" spellcheck="false" />
+          </label>
+          <fieldset class="goshi-colors guest-colors">
+            <legend>{c.practice.colorLabel}</legend>
+            {GOSHI_HUES.map((h, i) => (
+              <label class="goshi-swatch" title={c.practice.colorNames[i]}>
+                <input type="radio" name="guest-color" value={String(i)} data-guest-color aria-label={c.practice.colorNames[i]} />
+                <span style={`--h:${h}`}></span>
+              </label>
+            ))}
+          </fieldset>
+          <fieldset class="guest-skins">
+            <legend>{c.guest.skinLabel}</legend>
+            <div class="guest-skin-list" data-guest-skins></div>
+          </fieldset>
+          <button type="button" class="btn btn-gold btn-lg" id="guest-go">{c.guest.go}</button>
+          <p class="demo-note">{c.guest.note}</p>
+        </div>
+        <div class="guest-step" data-guest-step="modes" hidden>
+          <p class="eyebrow">{c.guest.eyebrow}</p>
+          <h2 id="guest-greeting">{fill(c.guest.greeting, { name: "" })}</h2>
+          <p class="guest-sub">{c.guest.modesTitle}</p>
+          <div class="guest-cards">
+            <button type="button" class="guest-card" data-guest-mode="practice">
+              <b>{c.guest.modes.practice.title}</b>
+              <span>{c.guest.modes.practice.desc}</span>
+              <i>{c.guest.modes.practice.tag}</i>
+            </button>
+            <button type="button" class="guest-card" data-guest-mode="arena">
+              <b>{c.guest.modes.arena.title}</b>
+              <span>{c.guest.modes.arena.desc}</span>
+              <i>{c.guest.modes.arena.tag}</i>
+            </button>
+            <button type="button" class="guest-card" data-guest-mode="duel">
+              <b>{c.guest.modes.duel.title}</b>
+              <span>{c.guest.modes.duel.desc}</span>
+              <i>{c.guest.modes.duel.tag}</i>
+            </button>
+            <button type="button" class="guest-card" data-guest-mode="survival">
+              <b>{c.guest.modes.survival.title}</b>
+              <span>{c.guest.modes.survival.desc}</span>
+              <i>{c.guest.modes.survival.tag}</i>
+            </button>
+          </div>
+          <p class="guest-rename"><button type="button" class="link-btn" id="guest-rename">{c.guest.nameLabel}</button></p>
+        </div>
+        <div class="guest-step" data-guest-step="duel" hidden>
+          <p class="eyebrow">{c.guest.modes.duel.title}</p>
+          <div class="btn-row guest-duel-row">
+            <button type="button" class="btn btn-gold" id="guest-duel-create">{c.guest.duelCreate}</button>
+            <label class="guest-code-label">
+              <span>{c.guest.duelCode}</span>
+              <input id="guest-code" type="text" maxlength="6" autocomplete="off" spellcheck="false" placeholder={c.guest.duelCodePlaceholder} />
+            </label>
+            <button type="button" class="btn btn-glass" id="guest-duel-join">{c.guest.duelJoin}</button>
+          </div>
+          <div class="guest-duel-wait" id="guest-duel-wait" hidden>
+            <p class="guest-code-wrap">{c.guest.duelCode}: <b id="guest-duel-code"></b></p>
+            <p id="guest-duel-players"></p>
+            <button type="button" class="btn btn-gold" id="guest-duel-start" hidden>{c.guest.duelStart}</button>
+          </div>
+          <p class="play-msg" id="guest-duel-msg" role="status" aria-live="polite"></p>
+          <button type="button" class="btn btn-glass btn-sm" id="guest-duel-back">{c.guest.duelBack}</button>
+        </div>
+      </div>
+    )}
+
+    {site.guestOnboarding && (
+      <details class="play-advanced" id="play-advanced">
+        <summary><span>{c.guest.advanced}</span></summary>
+      </details>
+    )}
 
     <section class="glass play-panel" id="play-wallet" aria-labelledby="play-wallet-h">
         <h2 id="play-wallet-h">{c.wallet.h2}</h2>
@@ -117,6 +199,7 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
           </label>
         ))}
       </fieldset>
+      <div class="guest-skin-list" data-guest-skins></div>
       <p class="skin-quick" data-names={JSON.stringify(c.live.skins.names)}><span class="skin-quick-label">{c.live.skins.quick}: <b data-skin-current>-</b></span> <a class="link-btn" href={path(lang, "profile")}>{c.live.skins.manage}</a></p>
       <div class="play-now-row">
         <label class="play-now-name" for="play-now-name">
@@ -146,6 +229,12 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
             <option value="insane">{c.practice.diffInsane}</option>
           </select>
         </label>)}
+        {site.guestOnboarding && (
+          <select id="play-now-mode" hidden>
+            <option value="match" selected></option>
+            <option value="survival"></option>
+          </select>
+        )}
         <button type="button" class="btn btn-gold btn-lg" id="play-now-btn">{c.practice.button}</button>
         {site.botLevels && <button type="button" class="btn btn-glass btn-lg" id="play-live-btn">{c.practice.liveButton}</button>}
         <button type="button" class="btn btn-glass" id="play-now-leave" hidden>{c.practice.leave}</button>
@@ -330,6 +419,9 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
       <h2 id="play-entry-title"></h2>
       <p id="play-entry-text"></p>
       <dl class="play-dl play-dl-lines" id="play-entry-lines"></dl>
+      <section class="entry-sec"><h3>{c.entry.finalTitle}</h3><p>{c.entry.finalText}</p></section>
+      <details class="entry-more">
+        <summary>{c.entry.moreRules}</summary>
       <section class="entry-sec entry-saboteurs">
         <h3>{c.entry.saboteurTitle}</h3>
         <p>{c.entry.saboteurNotice}</p>
@@ -341,8 +433,19 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
       </section>
       <section class="entry-sec"><h3>{c.entry.rakeTitle}</h3><p>{c.entry.rakeText}</p></section>
       <section class="entry-sec"><h3>{c.entry.vsTitle}</h3><p>{c.entry.vsText}</p></section>
-      <section class="entry-sec"><h3>{c.entry.finalTitle}</h3><p>{c.entry.finalText}</p></section>
+      </details>
+      {site.traps && (
+        <label class="entry-backpack" id="play-entry-backpack-wrap">
+          <span>{c.entry.backpackLabel}</span>
+          <select id="play-entry-backpack" data-none={c.entry.backpackNone} data-option={c.entry.backpackOption}></select>
+          <small>{c.entry.backpackHelp}</small>
+        </label>
+      )}
       <p class="demo-note">{c.entry.testReminder}</p>
+      <label class="gate-check entry-accept" id="play-entry-gate-wrap" hidden>
+        <input type="checkbox" id="play-entry-gate" aria-describedby="play-entry-msg" />
+        <span id="play-entry-gate-text"></span>
+      </label>
       <label class="gate-check entry-accept">
         <input type="checkbox" id="play-entry-accept" aria-describedby="play-entry-msg" />
         <span>{c.entry.accept}</span>
@@ -369,4 +472,5 @@ const json = JSON.stringify(data).replace(/</g, "\\u003c");
   import "../scripts/play.ts";
   import "../scripts/practice.ts";
   import "../scripts/skin-current.ts";
+  import "../scripts/guest-skins.ts";
 </script>

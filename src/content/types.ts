@@ -172,6 +172,31 @@ export interface PlayCopy {
     vsTitle: string; vsText: string;
     finalTitle: string; finalText: string; testReminder: string;
     accept: string; confirm: string; cancel: string; mustAccept: string;
+    moreRules: string;
+    backpackLabel: string; backpackNone: string; backpackOption: string; backpackHelp: string;
+  };
+  /** The simple flow (test and lab): one welcome screen, three big buttons and a lobby. */
+  menu: {
+    welcomeH: string; welcomeIntro: string; welcomeAccept: string;
+    create: string; createSub: string; join: string; joinSub: string; browse: string; browseSub: string;
+    pickFee: string; codeLabel: string; codePh: string; joinBtn: string; badCode: string; notFound: string;
+    connectFirst: string; creating: string; joining: string; failed: string; back: string;
+    lobbyH: string; codeTitle: string; copyLink: string; copied: string; share: string; players: string; you: string;
+    seats: string; start: string; startNeed: string; startHint: string; startAsked: string; fillBots: string; hostWait: string;
+  };
+  /** The guest onboarding wizard (test only): name + color, then four mode cards, no wallet. */
+  guest: {
+    eyebrow: string; title: string; subtitle: string; go: string; note: string; skinLabel: string;
+    greeting: string; modesTitle: string;
+    modes: {
+      practice: { title: string; desc: string; tag: string };
+      arena: { title: string; desc: string; tag: string };
+      duel: { title: string; desc: string; tag: string };
+      survival: { title: string; desc: string; tag: string };
+    };
+    advanced: string; nameLabel: string;
+    duelCreate: string; duelJoin: string; duelCode: string; duelCodePlaceholder: string; duelStart: string;
+    duelWaiting: string; duelPlayers: string; duelBack: string; duelBadCode: string; busy: string;
   };
   vsOffer: { title: string; text: string; countdown: string; accept: string; decline: string; accepted: string; declined: string; started: string };
   tx: {
@@ -194,7 +219,7 @@ export interface PlayCopy {
   };
   /** The free practice card at the top of the page: no wallet, no money. */
   practice: {
-    eyebrow: string; h2: string; text: string; nameLabel: string; namePlaceholder: string; serverLabel: string; serverAuto: string; regionNames: Record<string, string>; modeLabel: string; modeMatch: string; modeSurvival: string; showStart: string; showBadge: string; showLines: string[]; liveJoin: string; liveLeave: string; liveReconnecting: string; liveButton: string; liveWatchOnly: string; liveCounts: string; livePlaying: string; liveQueued: string; liveDead: string; diffLabel: string; diffEasy: string; diffMedium: string; diffHard: string; diffInsane: string; button: string; note: string;
+    eyebrow: string; h2: string; text: string; nameLabel: string; namePlaceholder: string; serverLabel: string; serverAuto: string; regionNames: Record<string, string>; modeLabel: string; modeMatch: string; modeSurvival: string; showStart: string; showBadge: string; liveJoin: string; liveLeave: string; liveLength: string; liveLengthMax: string; liveLengthPaying: string; liveLengthOk: string; liveLengthWallet: string; liveLengthFail: string; liveLengthCredit: string; liveReconnecting: string; liveButton: string; liveWatchOnly: string; liveCounts: string; liveCashPrice: string; liveCashFree: string; arenasError: string; arenasRetry: string; ticketsHave: string; ticketBuy: string; ticketBuying: string; ticketBought: string; ticketBuyFail: string; ticketEnter: string; ticketEnterFree: string; cashSignIn: string; arenasTitle: string; arenaEntry: string; arenaRow: string; cashTickets: string; cashPayClose: string; livePlaying: string; liveQueued: string; liveDead: string; diffLabel: string; diffEasy: string; diffMedium: string; diffHard: string; diffInsane: string; button: string; note: string;
     connecting: string; unreachable: string; busy: string; lost: string; failed: string;
     leave: string; resultH2: string; ranking: string; close: string;
     saboteur: string; bot: string;
@@ -243,17 +268,17 @@ export interface PlayCopy {
     arenaState: {
       connecting: string; waitingPlayers: string; startsIn: string; starting: string;
       lobbyH: string; paidSeats: string; freeSeats: string; empty: string; waited: string; vsTimer: string; vsDue: string;
-      fill: string; practice: string; practiceAgain: string; hint: string; share: string; shareCopied: string; returnToMatch: string; peerLeft: string; peerLeftGrace: string; matchLocked: string; peerBack: string; matchOver: string; matchOverRank: string; notNow: string; showAll: string; boostWord: string; boostLeft: string; boostRight: string; boostBigger: string; boostSmaller: string; leadTop: string; leadYou: string; leadBehind: string; inviteTitle: string; connectFirst: string; shareText: string; incomingRoom: string;
+      fill: string; practice: string; practiceAgain: string; exitMatch: string; trapLaser: string; trapSlow: string; varButton: string; trapKamikaze: string; trapShield: string; trapCashout: string; trapNotNow: string; trapKeys: string; trapNoBackpack: string; trapTooSoon: string; trapLeft: string; potLive: string; hint: string; share: string; shareCopied: string; returnToMatch: string; peerLeft: string; peerLeftGrace: string; matchLocked: string; peerBack: string; matchOver: string; matchOverRank: string; notNow: string; showAll: string; boostWord: string; boostLeft: string; boostRight: string; boostBigger: string; boostSmaller: string; leadTop: string; leadYou: string; leadBehind: string; inviteTitle: string; connectFirst: string; shareText: string; incomingRoom: string;
     };
     game: {
       canvasLabel: string; rotateTitle: string; rotateText: string; rotateStay: string; fullscreen: string; exitFullscreen: string; controls: string; boost: string; ctrlJoystick: string; ctrlFollow: string; time: string; mass: string; scores: string; you: string;
       alive: string; nitro: string; soundOn: string; soundOff: string; musicOn: string; musicOff: string; memeOn: string; memeOff: string;
-      finalZone: string; nextZone: string; zoneCalm: string; zoneWarn: string; zoneShrink: string; zoneHold: string; zoneOutBanner: string; showerIn: string; showerLanded: string; diagButton: string; diagLine: string; reportButton: string; reportCopied: string; reportManual: string;
+      finalZone: string; nextZone: string; zoneCalm: string; zoneWarn: string; zoneShrink: string; zoneHold: string; zoneOutBanner: string; bagLine: string; bossCalm: string; bossWarn: string; bossOpen: string; cashingOut: string; final3Freeze: string; bigOrbNeed: string; solSplit: string; cashOutTitle: string; cashOutText: string; cashOutStopped: string; cashOutStoppedText: string; cashOutSending: string; solscan: string; cashOtherWarn: string; cashToWallet: string; cashInfoTitle: string; cashInfoLines: string[]; cashTips: string[]; cashLine: string; cashReady: string; cashedOut: string; cashEntryOk: string; cashEntryBad: string; bossAttack: string; showerIn: string; showerLanded: string; diagButton: string; diagLine: string; reportButton: string; reportCopied: string; reportManual: string;
       quality: string; qualityAuto: string; qualityHigh: string; qualityMedium: string; qualityLow: string; ping: string; pingValue: string; pingWait: string; rank: string; rankValue: string; playersValue: string; outValue: string; zone: string; protectedHint: string; backToZone: string; saboteurLegend: string; paidLegend: string; botLegend: string;
       startAnnounce: string; endAnnounce: string; countdown: string;
       deadTitle: string; deadText: string; spectating: string; rankLabel: string;
       deathYouBody: string; deathYouHead: string; deathYouZone: string; deathYouWall: string; deathOnYourBody: string;
-      deathFeedBody: string; deathFeedHead: string; deathFeedZone: string; deathFeedWall: string;
+      deathFeedBody: string; deathFeedHead: string; deathFeedZone: string; deathFeedWall: string; deathYouKamikaze: string; deathYouCashout: string; deathFeedKamikaze: string; deathFeedCashout: string;
     };
     result: {
       h2: string; inTop: string; notInTop: string; winners: string; ranking: string; score: string; payout: string; place: [string, string, string];
@@ -317,6 +342,8 @@ export interface ReplayCopy {
 }
 
 export interface MatchesCopy {
+  /** The VAR of the cash arena (test network): title, intro, one line per clip, the player and the fingerprint check. */
+  var: { h2: string; intro: string; empty: string; eliminated: string; cashout: string; watch: string; hashOk: string; hashBad: string; by: string; history: string; all: string; cashouts: string; share: string; shareX: string; solscan: string; playPause: string; seek: string; speed: string; causeBody: string; causeZone: string; causeWall: string; causeCashout: string; copied: string; pick: string; shareText: string; emptyMine: string };
   filterAll: string; filterLabel: string; modes: Record<"royale" | "vs" | "duel", string>;
   players: string; winner: string; loadMore: string; loading: string; empty: string; error: string; refresh: string; shown: string; searchLink: string;
   tvStart: string; tvNext: string; tvExit: string; tvCount: string; tvEmpty: string;
