@@ -603,6 +603,10 @@ export const roadmap: Page = {
       gateLabel: "Gate",
       items: [
         { name: "Contract and first game", status: "live", text: "The escrow contract and Orb Rush run on Solana mainnet (real SOL, small entries) and on devnet (free practice, no real money).", gate: "Working end to end, and every match checkable by anyone." },
+        { name: "Cash arenas on devnet", status: "live", text: "Live arenas with fixed entries (0.003, 0.01 and 0.025 devnet SOL) on their own dedicated server. You buy a ticket, enter, eat SOL coins and cash out your entry times one plus your eliminations. Every entry and payout is on chain, every death and cash out has a VAR replay.", gate: "Accounts that close to the lamport and a payment that is never lost." },
+        { name: "Season 0 (devnet)", status: "live", text: "October 26 to November 9, 2026: a public ranking of who wins the most devnet SOL in the cash arenas. The top 10 are meant to earn tickets for the real arenas, under rules to be published.", gate: "Rules reviewed by the lawyer before any prize with real value." },
+        { name: "Monthly seasons on mainnet", status: "planned", text: "The cash arenas on Solana mainnet, in monthly seasons with a public ranking, and the winners announced with their VAR clips.", gate: "Cash arenas on mainnet, the external audit and the legal review." },
+        { name: "Weekly events", status: "idea", text: "Short challenges inside each season, like the biggest multiple of the week.", gate: "A season running." },
         { name: "Public repository and license", status: "live", text: "The contract, the game server and the website are public under Apache 2.0 at github.com/GoshiApp.", gate: "A clean repository, with no keys." },
         { name: "Security audit", status: "planned", text: "An internal review is done and its fixes are being applied. An independent external audit of the contract and the server is still pending: until then the contract is NOT externally audited.", gate: "Findings fixed and published." },
         { name: "Legal review", status: "pending", text: "Age, regions, how games with entry fees are classified, token disclosures, terms and privacy.", gate: "A written opinion for each country where it would open." },
@@ -624,6 +628,7 @@ export const roadmap: Page = {
         ["2026-10", "Contract v3 on devnet: 88% prizes for the top three paid players, a 2% saboteur pool, pass seats between tiers, VS mode and the super pot. The arena is a battle royale of solid bodies."],
         ["2026-10", "Mainnet soft launch (contract v5): the key that opens and settles rooms is separate from the key that holds the vault and can replace it, and anyone can refund a room that is 3 hours old and unsettled."],
         ["2026-10", "Public match history, replays from every player's point of view, video export and a verification page for every match."],
+        ["2026-10", "Cash arenas on devnet: tickets, a dedicated server, a fair cash out (entry times one plus eliminations), learning bots, VAR replays you can download as video, and Season 0 with a public ranking."],
       ],
       note: "Dates are the month a change was made, not a promise about the future.",
     },

@@ -894,3 +894,15 @@ html.tv-on { overflow: hidden; }
 .cash-result.is-loss strong { color: #ff5a5a; text-shadow: 0 0 24px rgba(255, 90, 90, 0.5); }
 @keyframes cash-pop { from { transform: translate(-50%, -50%) scale(0.6); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .cash-result { animation: none; } }
+
+/* The season ranking: the top ten marked, net SOL in green or red. */
+.season-board { margin: 18px 0; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.03); }
+.season-board h3 { margin: 0 0 4px; }
+.season-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.season-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); }
+.season-row.is-top { border: 1px solid rgba(255, 211, 77, 0.35); }
+.season-who { font-weight: 800; font-variant-numeric: tabular-nums; }
+.season-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+.season-row strong.is-gain { color: #2fbf71; }
+.season-row strong.is-loss { color: #e5484d; }
+.season-more { grid-column: 1 / -1; font-size: 0.8rem; color: var(--muted); }

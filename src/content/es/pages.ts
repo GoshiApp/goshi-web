@@ -603,6 +603,10 @@ export const roadmap: Page = {
       gateLabel: "Condición",
       items: [
         { name: "Contrato y primer juego", status: "live", text: "El contrato de custodia y Orb Rush funcionan en Solana mainnet (SOL real, entradas pequeñas) y en devnet (práctica gratis, sin dinero real).", gate: "Funcionando de punta a punta y con cada partida verificable por cualquiera." },
+        { name: "Arenas de dinero en devnet", status: "live", text: "Arenas en vivo con entrada fija (0.003, 0.01 y 0.025 SOL de devnet) en su propio servidor dedicado. Compras un ticket, entras, comes monedas de SOL y cobras tu entrada por uno más tus eliminaciones. Cada entrada y cada pago están en la cadena, y cada muerte y cada cobro tienen su repetición en el VAR.", gate: "Cuentas que cierran al lamport y un pago que nunca se pierde." },
+        { name: "Temporada 0 (devnet)", status: "live", text: "Del 26 de octubre al 9 de noviembre de 2026: un ranking público de quién gana más SOL de devnet en las arenas de dinero. La idea es que los 10 primeros ganen tickets para las arenas reales, con reglas que se publicarán.", gate: "Reglas revisadas por el abogado antes de cualquier premio con valor real." },
+        { name: "Temporadas mensuales en mainnet", status: "planned", text: "Las arenas de dinero en Solana mainnet, en temporadas mensuales con ranking público y los ganadores anunciados con sus clips del VAR.", gate: "Arenas de dinero en mainnet, la auditoría externa y la revisión legal." },
+        { name: "Eventos semanales", status: "idea", text: "Desafíos cortos dentro de cada temporada, como el mayor multiplicador de la semana.", gate: "Una temporada en marcha." },
         { name: "Repositorio público y licencia", status: "live", text: "El contrato, el servidor de juego y el sitio web son públicos bajo Apache 2.0 en github.com/GoshiApp.", gate: "Un repositorio limpio, sin claves." },
         { name: "Auditoría de seguridad", status: "planned", text: "Hay una revisión interna hecha y sus correcciones se están aplicando. Falta una auditoría externa independiente del contrato y del servidor: hasta entonces el contrato NO está auditado externamente.", gate: "Hallazgos corregidos y publicados." },
         { name: "Revisión legal", status: "pending", text: "Edad, regiones, cómo se clasifican los juegos con entrada, avisos sobre el token, términos y privacidad.", gate: "Una opinión escrita para cada país donde se abriría." },
@@ -624,6 +628,7 @@ export const roadmap: Page = {
         ["2026-10", "Contrato v3 en devnet: 88% de premios para los tres mejores jugadores de pago, una bolsa del 2% para saboteadores, puestos con pase entre niveles, el modo VS y el Super Pozo. La arena es una batalla real de cuerpos sólidos."],
         ["2026-10", "Lanzamiento suave en mainnet (contrato v5): la llave que abre y liquida salas es distinta de la que guarda la bóveda y puede reemplazarla, y cualquiera puede reembolsar una sala de más de 3 horas sin liquidar."],
         ["2026-10", "Historial público de partidas, repeticiones desde el punto de vista de cada jugador, exportación a video y una página para verificar cada partida."],
+        ["2026-10", "Arenas de dinero en devnet: tickets, servidor dedicado, cobro justo (entrada por uno más eliminaciones), bots que aprenden, repeticiones del VAR descargables como video y la Temporada 0 con ranking público."],
       ],
       note: "Las fechas son el mes en que se hizo un cambio, no una promesa sobre el futuro.",
     },

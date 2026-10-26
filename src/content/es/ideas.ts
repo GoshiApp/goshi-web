@@ -239,6 +239,16 @@ export const replayPage: Page = {
 };
 
 export const matchesCopy: MatchesCopy = {
+  season: {
+    title: "[[t:Temporada 0 · Quién ganó más SOL]]",
+    sub: "[[t:Red de pruebas, SOL de devnet. Termina en {d}. Los 10 primeros ganan tickets para las arenas reales (reglas pronto).]]",
+    ended: "[[t:La Temporada 0 terminó.]]",
+    empty: "[[t:Todavía nadie cobró. Sé el primero.]]",
+    net: "neto",
+    best: "mejor",
+    outs: "cobros",
+    days: "{d} d {h} h",
+  },
   var: {
     h2: "VAR de la arena de pago",
     intro: "Los últimos ocho segundos antes de cada eliminación con dinero en juego y de cada cobro, grabados por el servidor del juego tal como los jugó, cada uno con una huella SHA-256 que tu navegador comprueba.[[t: Red de prueba: SOL de prueba, sin valor real.]]",

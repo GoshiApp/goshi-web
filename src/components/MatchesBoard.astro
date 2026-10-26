@@ -34,6 +34,13 @@ const data = JSON.stringify({
     <ul class="idea-list" id="matches-list"></ul>
     <div class="btn-row"><button type="button" class="btn btn-glass" id="matches-more" hidden>{m.loadMore}</button></div>
     {site.lobby && (
+      <section class="season-board" id="season-board" data-api={api} data-t={JSON.stringify(m.season)} aria-labelledby="season-h">
+        <h3 id="season-h" data-season-title>{m.season.title}</h3>
+        <p class="muted" data-season-sub></p>
+        <ol class="season-list" data-season-list></ol>
+      </section>
+    )}
+    {site.lobby && (
       <div class="var-board" id="var-board" data-api={api} data-t={JSON.stringify(m.var)}>
         <h2>{m.var.h2}</h2>
         <p class="muted var-intro">{m.var.intro}</p>
@@ -73,4 +80,5 @@ const data = JSON.stringify({
   </div>
 </section>
 <script>import "../scripts/matches.ts";
-import "../scripts/var-board.ts";</script>
+import "../scripts/var-board.ts";
+import "../scripts/season-board.ts";</script>

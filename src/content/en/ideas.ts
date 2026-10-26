@@ -239,6 +239,16 @@ export const replayPage: Page = {
 };
 
 export const matchesCopy: MatchesCopy = {
+  season: {
+    title: "[[t:Season 0 · Top SOL winners]]",
+    sub: "[[t:Test network, devnet SOL. Ends in {d}. The top 10 earn tickets for the real arenas (rules soon).]]",
+    ended: "[[t:Season 0 has ended.]]",
+    empty: "[[t:Nobody has cashed out yet. Be the first.]]",
+    net: "net",
+    best: "best",
+    outs: "cash outs",
+    days: "{d} d {h} h",
+  },
   var: {
     h2: "VAR of the cash arena",
     intro: "The last eight seconds before every elimination with money at stake and every cash out, recorded by the game server as it played them, each with a SHA-256 fingerprint your browser checks.[[t: Test network: test SOL, no real value.]]",
