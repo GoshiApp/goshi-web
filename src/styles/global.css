@@ -885,3 +885,12 @@ html.tv-on { overflow: hidden; }
 .var-speed { min-height: 36px; border-radius: 10px; background: var(--surface-solid); color: var(--ink); border: 1px solid var(--line-strong); padding: 0 8px; }
 .var-clock { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
 .var-pp { min-width: 44px; }
+
+/* The result of a cash out: big, in the middle of the board, green for a gain and red for a loss. */
+.cash-result { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); z-index: 30; display: grid; gap: 6px; text-align: center; padding: 18px 28px; border-radius: 18px; background: rgba(5, 8, 25, 0.82); pointer-events: none; animation: cash-pop 0.5s ease-out; }
+.cash-result strong { font-size: clamp(2rem, 8vw, 3.6rem); font-weight: 900; line-height: 1; }
+.cash-result span { font-size: clamp(0.9rem, 3vw, 1.2rem); font-weight: 700; color: #fff; }
+.cash-result.is-gain strong { color: #7dffb0; text-shadow: 0 0 24px rgba(125, 255, 176, 0.6); }
+.cash-result.is-loss strong { color: #ff5a5a; text-shadow: 0 0 24px rgba(255, 90, 90, 0.5); }
+@keyframes cash-pop { from { transform: translate(-50%, -50%) scale(0.6); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cash-result { animation: none; } }

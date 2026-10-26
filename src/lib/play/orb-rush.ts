@@ -60,6 +60,9 @@ export interface OrbStrings {
   cashedOut?: string;
   /** Cash out result card and live lines: title, text ({bag}, {x}), stopped halfway ({bag}, {name}), the link, the sending line, others warned ({name}), the wallet line ({n}). */
   cashOutTitle?: string;
+  /** The big result after a cash out: gain or loss lines ({bag}, {x}). */
+  cashGain?: string;
+  cashLoss?: string;
   cashOutText?: string;
   cashOutStopped?: string;
   cashOutStoppedText?: string;
@@ -810,6 +813,25 @@ export class OrbRushArena implements RealtimeArena {
 
   /** The card after a cash out: never "eliminated". While the payout is on its way it says so; then the amount, the multiple and
    *  the payout on Solscan. Stopped halfway, it says what reached the wallet and that the rest fell on the map. */
+  /** The big result after a cash out, in the middle of the screen: what reached the wallet, the multiple, and the gain (green)
+   *  or the loss (red) against the entry. It stays a few seconds; the card below keeps the details. */
+  private cashResult(bag: number, entry: number): void {
+    const host = this.host?.querySelector<HTMLElement>(".game-canvas") ?? this.host;
+    if (!host) return;
+    host.querySelector(".cash-result")?.remove();
+    const s = this.deps.strings;
+    const net = bag - entry;
+    const box = document.createElement("div");
+    box.className = `cash-result ${net >= 0 ? "is-gain" : "is-loss"}`;
+    const big = document.createElement("strong");
+    big.textContent = `${net >= 0 ? "+" : "-"}${(Math.abs(net) / 1e9).toFixed(9).replace(/0+$/, "").replace(/\.$/, "")} SOL`;
+    const line = document.createElement("span");
+    line.textContent = (net >= 0 ? s.cashGain ?? "" : s.cashLoss ?? "").replace("{bag}", (bag / 1e9).toFixed(9)).replace("{x}", entry ? (bag / entry).toFixed(2) : "0");
+    box.append(big, line);
+    host.append(box);
+    setTimeout(() => box.remove(), 7000);
+  }
+
   private setCashOverlay(m: { bag: number; entry: number; sig?: string; by?: string } | null, stopped: boolean) {
     const el = this.host?.querySelector<HTMLElement>("[data-dead]");
     if (!el) return;
@@ -820,6 +842,8 @@ export class OrbRushArena implements RealtimeArena {
     const k = el.querySelector<HTMLElement>("[data-dead-by]");
     if (t) t.textContent = (stopped ? s.cashOutStopped : s.cashOutTitle) ?? "";
     if (!m) { if (x) x.textContent = s.cashOutSending ?? ""; if (k) k.textContent = ""; return; }
+    this.cashResult(m.bag, m.entry);
+    if (!stopped) window.dispatchEvent(new CustomEvent("goshi-cashed-out"));
     const bag = (m.bag / 1e9).toFixed(9), mult = m.entry ? (m.bag / m.entry).toFixed(2) : "0";
     const name = m.by ? (this.buf.latest?.players.find((p) => p.w === m.by)?.n ?? `${m.by.slice(0, 4)}..${m.by.slice(-4)}`) : "";
     if (x) x.textContent = (stopped ? s.cashOutStoppedText ?? "" : s.cashOutText ?? "").replace("{bag}", bag).replace("{x}", mult).replace("{name}", name);

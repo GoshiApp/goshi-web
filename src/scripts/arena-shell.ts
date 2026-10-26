@@ -408,7 +408,7 @@ function createShell(d: ShellData): ArenaShell {
         strings: {
           you: g.you, startAnnounce: g.startAnnounce, endAnnounce: g.endAnnounce,
           zoneLines: { calm: g.zoneCalm, warn: g.zoneWarn, shrink: g.zoneShrink, hold: g.zoneHold, final: g.finalZone },
-          finalZone: g.finalZone, nextZone: g.nextZone, zoneOutBanner: g.zoneOutBanner, bagLine: g.bagLine, bossCalm: g.bossCalm, bossWarn: g.bossWarn, bossOpen: g.bossOpen, cashingOut: g.cashingOut, final3Freeze: g.final3Freeze, bigOrbNeed: g.bigOrbNeed, solSplit: g.solSplit, cashOutTitle: g.cashOutTitle, cashOutText: g.cashOutText, cashOutStopped: g.cashOutStopped, cashOutStoppedText: g.cashOutStoppedText, cashOutSending: g.cashOutSending, solscan: g.solscan, cashOtherWarn: g.cashOtherWarn, cashToWallet: g.cashToWallet, cashInfoTitle: g.cashInfoTitle, cashInfoLines: g.cashInfoLines, cashTips: g.cashTips, cashLine: g.cashLine, cashReady: g.cashReady, cashedOut: g.cashedOut, cashEntryOk: g.cashEntryOk, cashEntryBad: g.cashEntryBad, cashSignIn: pc.cashSignIn, bossAttack: g.bossAttack, showerIn: g.showerIn, showerLanded: g.showerLanded,
+          finalZone: g.finalZone, nextZone: g.nextZone, zoneOutBanner: g.zoneOutBanner, bagLine: g.bagLine, bossCalm: g.bossCalm, bossWarn: g.bossWarn, bossOpen: g.bossOpen, cashingOut: g.cashingOut, final3Freeze: g.final3Freeze, bigOrbNeed: g.bigOrbNeed, solSplit: g.solSplit, cashOutTitle: g.cashOutTitle, cashOutText: g.cashOutText, cashOutStopped: g.cashOutStopped, cashOutStoppedText: g.cashOutStoppedText, cashOutSending: g.cashOutSending, solscan: g.solscan, cashOtherWarn: g.cashOtherWarn, cashToWallet: g.cashToWallet, cashInfoTitle: g.cashInfoTitle, cashInfoLines: g.cashInfoLines, cashTips: g.cashTips, cashLine: g.cashLine, cashReady: g.cashReady, cashGain: g.cashGain, cashLoss: g.cashLoss, cashedOut: g.cashedOut, cashEntryOk: g.cashEntryOk, cashEntryBad: g.cashEntryBad, cashSignIn: pc.cashSignIn, bossAttack: g.bossAttack, showerIn: g.showerIn, showerLanded: g.showerLanded,
           countdown: g.countdown, deadTitle: g.deadTitle, deadText: g.deadText,
           death: {
             youBody: g.deathYouBody, youHead: g.deathYouHead, youZone: g.deathYouZone, youWall: g.deathYouWall, onYourBody: g.deathOnYourBody,
@@ -863,6 +863,9 @@ function createShell(d: ShellData): ArenaShell {
 
   /** The cash arena of the test network: its entry now and its vault (from the last status), or null elsewhere. */
   let liveCash: { price: number; vault: string } | null = null;
+  /** The last life ended with a cash out: the panel says so instead of "eliminated". */
+  let lastCashedOut = false;
+  window.addEventListener("goshi-cashed-out", () => { lastCashedOut = true; });
   /** The connected wallet's paid tickets not used yet (asked every 20 s while the arena panel is open). */
   let myTickets: { sig: string; lamports: number }[] = [];
   let ticketsAskedAt = 0;
@@ -890,6 +893,7 @@ function createShell(d: ShellData): ArenaShell {
   function onLive(m: { state: "watching" | "queued" | "playing" | "dead"; places: number; humans: number; waiting: number; watching: number; you?: string; pos?: number; cash?: { price: number; vault: string } }) {
     liveCash = m.cash ?? null;
     if (m.state === "playing" && m.you) arena?.setYou(m.you);
+    if (m.state === "playing") lastCashedOut = false;
     // The team wallet: CEO mode (if it was on) is handed back to a new body. It no longer takes a place again on its own.
     if (ceoSession && showMode) {
       if (m.state === "playing" && ceoAfk) {
@@ -910,7 +914,13 @@ function createShell(d: ShellData): ArenaShell {
     if (buy) buy.hidden = m.state !== "playing" || !CONTRACT_V6;
     if (m.state === "playing") { text.textContent = `${pc.livePlaying} · ${counts}`; join.hidden = true; leave.hidden = false; }
     else if (m.state === "queued") { text.textContent = `${fill(pc.liveQueued, { n: m.pos ?? 1 })} · ${counts}`; join.hidden = true; leave.hidden = false; }
-    else if (m.state === "dead") { text.textContent = `${pc.liveDead} · ${counts}${ticketText}`; join.hidden = false; leave.hidden = true; }
+    // After a death in a paid arena the button says what happens next: enter with a ticket of this arena, or buy one.
+    const againBtn = q<HTMLButtonElement>("[data-dead-again]");
+    if (againBtn && m.cash && connectedAddress()) {
+      const have = myTickets.some((t) => t.lamports === m.cash!.price);
+      againBtn.textContent = have ? pc.ticketEnter : fill(pc.ticketBuy, { n: String(m.cash.price / 1e9) });
+    }
+    else if (m.state === "dead") { text.textContent = `${lastCashedOut ? pc.liveCashedOut : pc.liveDead} · ${counts}${ticketText}`; join.hidden = false; leave.hidden = true; }
     else { text.textContent = counts + ticketText; join.hidden = false; leave.hidden = true; }
   }
   async function startPractice() {
