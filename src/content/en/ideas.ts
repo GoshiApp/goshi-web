@@ -257,6 +257,8 @@ export const matchesCopy: MatchesCopy = {
     causeZone: "Out of the safe zone",
     causeWall: "Hit the edge",
     causeCashout: "Cashed out",
+    video: "Download video",
+    videoRec: "Recording the video... {n} s",
     playPause: "Play or pause",
     seek: "Move through the replay",
     speed: "Replay speed",

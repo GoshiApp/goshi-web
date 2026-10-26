@@ -81,10 +81,45 @@ if (box) {
     const paintBtn = () => { playBtn.textContent = paused ? "\u25B6" : "\u275A\u275A"; playBtn.setAttribute("aria-pressed", String(!paused)); };
     paintBtn();
     playBtn.onclick = () => { if (vt >= tEnd) vt = t0; paused = !paused; paintBtn(); };
+    // The video: the clip is played again from the start at normal speed and recorded straight from the screen of the VAR, then
+    // saved as MP4 where the browser can make one (Chrome, Safari) and WebM elsewhere. Nothing leaves the browser.
+    const vidBtn = $("var-video") as HTMLButtonElement;
+    vidBtn.disabled = false;
+    vidBtn.textContent = t.video;
+    vidBtn.onclick = () => {
+      if (vidBtn.disabled || typeof MediaRecorder === "undefined") return;
+      const type = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find((x) => MediaRecorder.isTypeSupported(x)) ?? "";
+      let rec: MediaRecorder;
+      try { rec = new MediaRecorder(canvas.captureStream(30), { ...(type ? { mimeType: type } : {}), videoBitsPerSecond: 6_000_000 }); } catch { return; }
+      const chunks: BlobPart[] = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        const mime = rec.mimeType || type || "video/webm";
+        const blob = new Blob(chunks, { type: mime });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `goshi-var-${c.id}.${mime.includes("mp4") ? "mp4" : "webm"}`;
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+        vidBtn.disabled = false; vidBtn.textContent = t.video;
+      };
+      vt = t0; speed = 1; speedSel.value = "1"; paused = false; paintBtn();
+      vidBtn.disabled = true;
+      rec.start(250);
+      const tick2 = () => {
+        if (run !== playing) { rec.stop(); return; }
+        vidBtn.textContent = (t.videoRec ?? "").replace("{n}", String(Math.max(0, Math.ceil((tEnd - vt) / 1000))));
+        if (vt >= tEnd) { setTimeout(() => rec.state !== "inactive" && rec.stop(), 600); return; }
+        setTimeout(tick2, 200);
+      };
+      tick2();
+    };
     speedSel.value = "1";
     speedSel.onchange = () => { speed = Number(speedSel.value) || 1; };
     seek.oninput = () => { vt = t0 + Number(seek.value); };
     const fmt = (ms: number) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+    const first = c.frames.find((fr) => fr.b.some((b) => b[0] === c.victim))?.b.find((b) => b[0] === c.victim);
+    let lastCam: [number, number] = first ? [first[1], first[2]] : [1500, 1500];
     const tick = (now: number) => {
       if (run !== playing) return;
       const dt = now - last; last = now;
@@ -103,16 +138,18 @@ if (box) {
       const orbs = new Map<number, { id: number; x: number; y: number; v: number; l?: number; c?: string; q?: number }>();
       const o = f.o ?? [];
       for (let k = 0; k + 3 < o.length; k += 4) orbs.set(k, { id: k, x: o[k], y: o[k + 1], v: o[k + 2], ...(o[k + 3] > 0 ? { l: o[k + 3], c: "SOL", q: o[k + 3] / 1e9 } : {}) });
-      const me = f.b.find((b) => b[0] === c.victim) ?? f.b[0];
+      // The camera stays on the player of the clip; once its body is gone (a cash out, a death) it holds where it was last.
+      const me = f.b.find((b) => b[0] === c.victim);
+      if (me) lastCam = [me[1], me[2]];
       painter.frame({
         bare: true, g, W: canvas.width, H: canvas.height, dpr: 1, ui: 1.3, now, players, zone: { cx: 1500, cy: 1500, r: 99999 }, orbs,
-        world: { w: 3000, h: 3000 }, you: c.victim, cam: { x: me?.[1] ?? 1500, y: me?.[2] ?? 1500 }, scale: 1.1, shake: [0, 0],
+        world: { w: 3000, h: 3000 }, you: c.victim, cam: { x: lastCam[0], y: lastCam[1] }, scale: 1.1, shake: [0, 0],
         meAlive: false, myMass: 0, boosting: false, protectLeft: 0, hasState: true, reduced: true, floaters: [],
-        strings: { you: "", protectedHint: "", backToZone: "", countdown: "", finalZone: "", nextZone: "", nitro: "", mass: "" },
+        strings: { you: "VAR", protectedHint: "", backToZone: "", countdown: "", finalZone: "", nextZone: "", nitro: "", mass: "" },
       } as never);
       // The moment it happened: a red ring on the spot and why, for the two seconds after.
       if (c.spot && vt >= c.at) {
-        const sc = 1.1, cx = me?.[1] ?? 1500, cy = me?.[2] ?? 1500;
+        const sc = 1.1, cx = lastCam[0], cy = lastCam[1];
         const x = canvas.width / 2 + (c.spot[0] - cx) * sc, y = canvas.height / 2 + (c.spot[1] - cy) * sc;
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         g.strokeStyle = c.kind === "cashout" ? `rgba(125,255,176,${0.6 + 0.4 * pulse})` : `rgba(255,59,59,${0.6 + 0.4 * pulse})`;

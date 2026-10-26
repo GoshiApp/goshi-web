@@ -343,7 +343,7 @@ export interface ReplayCopy {
 
 export interface MatchesCopy {
   /** The VAR of the cash arena (test network): title, intro, one line per clip, the player and the fingerprint check. */
-  var: { h2: string; intro: string; empty: string; eliminated: string; cashout: string; watch: string; hashOk: string; hashBad: string; by: string; history: string; all: string; cashouts: string; share: string; shareX: string; solscan: string; playPause: string; seek: string; speed: string; causeBody: string; causeZone: string; causeWall: string; causeCashout: string; copied: string; pick: string; shareText: string; emptyMine: string };
+  var: { h2: string; intro: string; empty: string; eliminated: string; cashout: string; watch: string; hashOk: string; hashBad: string; by: string; history: string; all: string; cashouts: string; share: string; shareX: string; solscan: string; playPause: string; video: string; videoRec: string; seek: string; speed: string; causeBody: string; causeZone: string; causeWall: string; causeCashout: string; copied: string; pick: string; shareText: string; emptyMine: string };
   filterAll: string; filterLabel: string; modes: Record<"royale" | "vs" | "duel", string>;
   players: string; winner: string; loadMore: string; loading: string; empty: string; error: string; refresh: string; shown: string; searchLink: string;
   tvStart: string; tvNext: string; tvExit: string; tvCount: string; tvEmpty: string;
