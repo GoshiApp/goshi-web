@@ -670,6 +670,8 @@ export const play: PlayCopy = {
       bagLine: "Tu bolsa: {n} SOL",
       bossCalm: "Jefe: {name}",
       bossWarn: "Jefe {name} expuesto en {n} s",
+      bossOpenBody: "Jefe {name} EXPUESTO: muérdelo en cualquier parte ({n} s)",
+      bossAttackBody: "¡ATAQUEN AL MÁS RICO! TODO SU CUERPO ESTÁ VULNERABLE",
       bossOpen: "Jefe {name} EXPUESTO: muerde su cola ({n} s)",
       cashingOut: "Cobrando... {n} s",
       cashInfoTitle: "Esta arena",

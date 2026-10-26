@@ -43,6 +43,9 @@ export interface OrbStrings {
   bossCalm?: string;
   bossWarn?: string;
   bossOpen?: string;
+  /** Cash arena: the boss can be bitten anywhere while exposed. */
+  bossOpenBody?: string;
+  bossAttackBody?: string;
   cashingOut?: string;
   /** "For the big orbs you need mass {n}" (live arena) */
   bigOrbNeed?: string;
@@ -661,6 +664,7 @@ export class OrbRushArena implements RealtimeArena {
     }
     this.freezeLeft = msg.freeze ?? 0;
     this.solNow = msg.sol ?? null;
+    this.inCashArena = !!msg.cashInfo;
     this.cashInfo(msg.cashInfo);
     // Coins that fused on the map: a beam from one into the other and a swell where they meet.
     if (fresh) for (const [ax, ay, bx, by] of msg.fuses ?? []) fx.fuse(ax, ay, bx, by, 14, 3);
@@ -737,7 +741,16 @@ export class OrbRushArena implements RealtimeArena {
     deadNow.forEach((ev, k) => {
       const old = before.get(ev.w)!;
       const share = lootCoins.filter((_, i) => i % deadNow.length === k);
-      if (fresh) this.painter.supernova(old.head, old.body, old.r, this.painter.styleFor(old).body, share, performance.now());
+      // The crash pushes the body back from what it hit (the nearest point of the other body) before it breaks apart.
+      let knock: [number, number] | undefined;
+      const hit = before.get(ev.by);
+      if (hit) {
+        let bx = hit.head[0], by = hit.head[1], bd = Infinity;
+        for (const q of [hit.head, ...hit.body]) { const d = Math.hypot(q[0] - old.head[0], q[1] - old.head[1]); if (d < bd) { bd = d; bx = q[0]; by = q[1]; } }
+        const dx = old.head[0] - bx, dy = old.head[1] - by, len = Math.hypot(dx, dy) || 1;
+        knock = [(dx / len) * old.r * 3, (dy / len) * old.r * 3];
+      }
+      if (fresh) this.painter.supernova(old.head, old.body, old.r, this.painter.styleFor(old).body, share, performance.now(), knock);
     });
     for (const ev of msg.events) {
       const old = before.get(ev.w);
@@ -745,11 +758,17 @@ export class OrbRushArena implements RealtimeArena {
       if (fresh) {
         const color = this.painter.effectColor(old);
         fx.burst(old.head[0], old.head[1], 16, 180, old.r * 0.5, color);
+        // The crash: a shock wave where the head hit, so a death is seen as an impact, not a body vanishing.
+        fx.pop(old.head[0], old.head[1], old.r * 3.2, 3);
+        fx.pop(old.head[0], old.head[1], old.r * 5.5, 3);
+        fx.burst(old.head[0], old.head[1], 22, 320, old.r * 0.35, 3);
         this.painter.noteDeath(old.head[0], old.head[1], old.r, color, performance.now());
         for (let i = 2; i < old.body.length; i += Math.max(2, Math.ceil(old.body.length / 8))) {
           fx.burst(old.body[i][0], old.body[i][1], 3, 120, old.r * 0.45, color);
         }
       }
+      // Whoever made the kill feels it too: a short shake.
+      if (ev.by === this.you && ev.w !== this.you && fresh) { this.shakeAt = performance.now(); this.shakeAmp = 7; }
       if (ev.w === this.you) {
         this.shakeAt = performance.now();
         this.shakeAmp = 14;
@@ -777,6 +796,8 @@ export class OrbRushArena implements RealtimeArena {
   }
 
   private infoAt = 0;
+  /** This view is a cash arena (the server sends its tallies only there). */
+  private inCashArena = false;
   /** Cash arena: the numbers of the arena and a tip that changes every 7 s, refreshed twice a second at most. */
   private cashInfo(ci?: { in: number; n: number; house: number; paid: number; outs: number; kills: number; cut: number; left: number }) {
     const el = this.host?.querySelector<HTMLElement>("[data-cash-info]");
@@ -1317,14 +1338,16 @@ export class OrbRushArena implements RealtimeArena {
         g.strokeStyle = "rgba(120,200,255,0.9)"; g.lineWidth = 4 * dpr;
         g.beginPath(); g.arc(x, y, Math.max(20, b.r * scale * 3), 0, Math.PI * 2); g.stroke();
       }
-      const tpl = bi.st === "open" ? s.bossOpen : bi.st === "warn" ? s.bossWarn : s.bossCalm;
+      const cashArena = this.inCashArena;
+      const tpl = bi.st === "open" ? (cashArena ? s.bossOpenBody : s.bossOpen) : bi.st === "warn" ? s.bossWarn : s.bossCalm;
       if (tpl) line(tpl.replace("{name}", b.n).replace("{n}", String(bi.in)), 76 * ui, bi.st === "open" ? "#ff6b6b" : bi.st === "warn" ? "#ffd34d" : "#ffffff");
       // While the tail is exposed, a big call in the middle of the screen, so nobody misses the moment to attack.
-      if (bi.st === "open" && s.bossAttack) {
+      const attack = cashArena ? s.bossAttackBody : s.bossAttack;
+      if (bi.st === "open" && attack) {
         const pulse = 1 + 0.08 * Math.sin(performance.now() / 120);
         g.font = `900 ${Math.round(30 * ui * pulse)}px system-ui, sans-serif`;
         g.textAlign = "center"; g.textBaseline = "middle"; g.lineWidth = 6 * ui; g.strokeStyle = "rgba(0,0,0,0.8)"; g.fillStyle = "#ff4a4a";
-        g.strokeText(s.bossAttack, W / 2, H * 0.3); g.fillText(s.bossAttack, W / 2, H * 0.3);
+        g.strokeText(attack, W / 2, H * 0.3); g.fillText(attack, W / 2, H * 0.3);
       }
     }
     // Near a big orb you cannot eat yet: say what it takes, once you are close enough to try.

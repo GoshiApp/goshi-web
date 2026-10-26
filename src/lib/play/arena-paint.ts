@@ -205,12 +205,12 @@ export class ArenaPainter {
 
   /** A dizzy face where a goshi died, fading out. */
   /** Deaths shown as a supernova: the body glowing as it fades, a flash and a shock ring, and its coins flying to where they land. */
-  private novas: { pts: [number, number][]; hx: number; hy: number; r: number; color: string; at: number }[] = [];
+  private novas: { pts: [number, number][]; hx: number; hy: number; r: number; color: string; at: number; knock?: [number, number] }[] = [];
   private flights = new Map<number, { fx: number; fy: number; tx: number; ty: number; v: number; c?: string; id: number; at: number; delay: number }>();
 
-  supernova(head: [number, number], body: readonly [number, number][], r: number, color: string, coins: readonly { id: number; x: number; y: number; v: number; c?: string }[], now: number): void {
+  supernova(head: [number, number], body: readonly [number, number][], r: number, color: string, coins: readonly { id: number; x: number; y: number; v: number; c?: string }[], now: number, knock?: [number, number]): void {
     const pts: [number, number][] = [head, ...body.map((q) => [q[0], q[1]] as [number, number])];
-    this.novas.push({ pts, hx: head[0], hy: head[1], r, color, at: now });
+    this.novas.push({ pts, hx: head[0], hy: head[1], r, color, at: now, knock });
     if (this.novas.length > 12) this.novas.shift();
     coins.forEach((o, i) => {
       const from = pts[Math.floor((i * pts.length) / Math.max(1, coins.length))] ?? head;
@@ -224,8 +224,9 @@ export class ArenaPainter {
     this.novas = this.novas.filter((n) => now - n.at < NOVA_MS);
     for (const n of this.novas) {
       const t = (now - n.at) / NOVA_MS;
-      // The body: still there, glowing, fading out.
+      // The body: still there, glowing, fading out, thrown back by the crash in the first moments.
       g.save();
+      if (n.knock) { const e = 1 - Math.pow(1 - Math.min(1, t * 2.5), 3); g.translate(n.knock[0] * e, n.knock[1] * e); }
       g.lineCap = "round"; g.lineJoin = "round";
       g.globalAlpha = Math.max(0, 1 - t) * 0.85;
       g.strokeStyle = n.color;

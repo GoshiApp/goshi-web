@@ -670,6 +670,8 @@ export const play: PlayCopy = {
       bagLine: "Your bag: {n} SOL",
       bossCalm: "Boss: {name}",
       bossWarn: "Boss {name} exposed in {n} s",
+      bossOpenBody: "Boss {name} EXPOSED: bite it anywhere ({n} s)",
+      bossAttackBody: "ATTACK THE RICHEST! ITS WHOLE BODY IS EXPOSED",
       bossOpen: "Boss {name} EXPOSED: bite its tail ({n} s)",
       cashingOut: "Cashing out... {n} s",
       cashInfoTitle: "This arena",
