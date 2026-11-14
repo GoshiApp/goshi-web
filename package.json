@@ -20,7 +20,7 @@
   "dependencies": {
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
-    "astro": "^7.3.5",
+    "astro": "^7.4.7",
     "buffer": "^6.0.3"
   },
   "devDependencies": {
